@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Post Project - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main>
+        <div class="form-container" style="max-width: 700px;">
+            <h2 style="text-align: center; margin-bottom: 2rem;">Post a Project</h2>
+            <form id="projectForm">
+                <div class="form-group">
+                    <label for="title">Project Title</label>
+                    <input type="text" id="title" name="title" required>
+                </div>
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <textarea id="description" name="description" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="budgetType">Budget Type</label>
+                    <select id="budgetType" name="budgetType" required>
+                        <option value="fixed">Fixed Price</option>
+                        <option value="hourly">Hourly Rate</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="budget">Budget ($)</label>
+                    <input type="number" id="budget" name="budget" min="0" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="skills">Required Skills (comma-separated)</label>
+                    <input type="text" id="skills" name="skills" placeholder="e.g., Python, React, UI/UX">
+                </div>
+                <div class="form-group">
+                    <label for="category">Category</label>
+                    <select id="category" name="category">
+                        <option value="">Chọn danh mục</option>
+                        <option value="web-development">Web Development</option>
+                        <option value="design">Design</option>
+                        <option value="branding">Branding</option>
+                        <option value="mobile">Mobile App</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="tags">Tags (comma-separated)</label>
+                    <input type="text" id="tags" name="tags" placeholder="ví dụ: landing page, ecommerce">
+                </div>
+                <div class="form-group">
+                    <label for="deadline">Deadline (optional)</label>
+                    <input type="date" id="deadline" name="deadline">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">
+                    <i class="fas fa-paper-plane"></i> Publish Project
+                </button>
+            </form>
+            <div id="errorMessage" style="color: var(--danger-color); margin-top: 1rem; text-align: center; display: none;"></div>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/projects.js"></script>
+    <script>
+        redirectIfNotAuthenticated();
+        let currentUser = getCurrentUserProfile();
+        if (!currentUser) {
+            fetchCurrentUser().then(user => currentUser = user);
+        }
+
+        document.getElementById('projectForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const user = currentUser || getCurrentUserProfile();
+            if (!user) {
+                window.location.href = 'login.html';
+                return;
+            }
+            const formData = {
+                title: document.getElementById('title').value,
+                description: document.getElementById('description').value,
+                budget_type: document.getElementById('budgetType').value,
+                budget: parseFloat(document.getElementById('budget').value),
+                skills_required: document.getElementById('skills').value.split(',').map(s => s.trim()).filter(s => s),
+                deadline: document.getElementById('deadline').value || null,
+                category: document.getElementById('category').value || null,
+                tags: document.getElementById('tags').value.split(',').map(s => s.trim()).filter(s => s),
+                client_id: user.id
+            };
+
+            const result = await createProject(formData);
+            if (result.success) {
+                window.location.href = `workspace.html?project_id=${result.data.id}`;
+            } else {
+                document.getElementById('errorMessage').textContent = result.error;
+                document.getElementById('errorMessage').style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>
+

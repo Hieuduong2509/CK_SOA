@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workspace - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main>
+        <div class="container" style="padding: 2rem 0;">
+            <div style="display: grid; grid-template-columns: 1fr 300px; gap: 2rem;">
+                <div>
+                    <h2 id="projectTitle" style="margin-bottom: 1rem;">Project Workspace</h2>
+                    <div id="chatContainer" style="background: white; border-radius: var(--radius-xl); padding: 1.5rem; box-shadow: var(--shadow-md); margin-bottom: 1.5rem; height: 400px; overflow-y: auto;">
+                        <div id="messagesList"></div>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="messageInput" placeholder="Type a message..." style="flex: 1; padding: 0.75rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+                        <button class="btn btn-primary" onclick="sendMessage()">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <h3 style="margin-bottom: 1rem;">Milestones</h3>
+                    <div id="milestonesList">
+                        <!-- Milestones will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/workspace.js"></script>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const projectId = urlParams.get('project_id');
+        if (projectId) {
+            loadWorkspace(projectId);
+        }
+    </script>
+</body>
+</html>
+
