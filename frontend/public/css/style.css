@@ -49,6 +49,87 @@ section {
     width: 100%;
 }
 
+/* Tabs */
+.tabs-container {
+    display: flex;
+    overflow-x: auto;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--text-secondary);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.tab-btn:hover {
+    background: rgba(0, 102, 255, 0.05);
+    color: var(--primary-color);
+}
+
+.tab-btn.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    background: white;
+}
+
+.tab-pane {
+    display: none;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+/* Chat bubbles */
+.message-bubble {
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Control panel */
+.control-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.tab-content {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* Bidder card */
+.bidder-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.bidder-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
 section > .container {
     padding-top: 3rem;
     padding-bottom: 3rem;
@@ -1274,6 +1355,187 @@ section > .container {
 .btn-small {
     padding: 0.45rem 0.9rem;
     font-size: 0.8rem;
+}
+
+.btn-success {
+    background: var(--success-color);
+    color: white;
+    border: none;
+}
+
+.btn-success:hover {
+    background: #059669;
+}
+
+.btn-danger {
+    background: var(--danger-color);
+    color: white;
+    border: none;
+}
+
+.btn-danger:hover {
+    background: #DC2626;
+}
+
+.btn-warning {
+    background: #F59E0B;
+    color: white;
+    border: none;
+}
+
+.btn-warning:hover {
+    background: #D97706;
+}
+
+.project-card-meta .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    width: 100%;
+}
+
+.project-card-meta .meta-row span {
+    flex: 1;
+    min-width: 200px;
+}
+
+.project-description {
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.project-description-full {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: var(--bg-gray);
+    border-radius: var(--radius-md);
+}
+
+.project-description-full p {
+    margin: 0.5rem 0;
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+.project-description-full p:first-child {
+    margin-top: 0;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Modal styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+}
+
+.modal-content {
+    background: var(--bg-white);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    width: 100%;
+    max-width: 800px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: var(--radius-md);
+    transition: background 0.2s;
+}
+
+.modal-close:hover {
+    background: var(--bg-gray);
+}
+
+.modal-body {
+    padding: 1.5rem;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.bid-card {
+    transition: box-shadow 0.2s;
+}
+
+.bid-card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.status-tag.draft {
+    background: rgba(107, 114, 128, 0.12);
+    color: var(--secondary-color);
+}
+
+.status-tag.open {
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--success-color);
+}
+
+.status-tag.in-progress {
+    background: rgba(0, 102, 255, 0.12);
+    color: var(--primary-color);
+}
+
+.status-tag.completed {
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--success-color);
+}
+
+.status-tag.cancelled {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--danger-color);
+}
+
+.status-tag.disputed {
+    background: rgba(245, 158, 11, 0.12);
+    color: #F59E0B;
+}
+
+.status-tag.pending-approval {
+    background: rgba(245, 158, 11, 0.12);
+    color: #F59E0B;
 }
 
 @media (max-width: 768px) {

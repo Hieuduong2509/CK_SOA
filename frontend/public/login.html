@@ -44,12 +44,44 @@
             const password = document.getElementById('password').value;
             const errorDiv = document.getElementById('errorMessage');
             
-            const result = await login(email, password);
-            if (result.success) {
-                // Redirect về trang chủ sau khi đăng nhập thành công
-                window.location.href = 'index.html';
-            } else {
-                errorDiv.textContent = result.error;
+            try {
+                const result = await login(email, password);
+                if (result.success) {
+                    // Redirect theo role của user
+                    const user = result.data.user;
+                    console.log('Login successful, user data:', user);
+                    
+                    // Ensure redirectByRole is available
+                    if (typeof redirectByRole === 'function') {
+                        redirectByRole(user);
+                    } else {
+                        console.error('redirectByRole function not found!');
+                        // Fallback: redirect based on role manually
+                        if (user && user.role) {
+                            let role = user.role;
+                            if (typeof role === 'object' && role.value) {
+                                role = role.value;
+                            }
+                            role = String(role).toLowerCase();
+                            
+                            if (role === 'admin') {
+                                window.location.href = 'admin.html';
+                            } else if (role === 'freelancer') {
+                                window.location.href = 'dashboard_freelancer.html';
+                            } else {
+                                window.location.href = 'index.html';
+                            }
+                        } else {
+                            window.location.href = 'index.html';
+                        }
+                    }
+                } else {
+                    errorDiv.textContent = result.error;
+                    errorDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                errorDiv.textContent = 'Đã xảy ra lỗi khi đăng nhập. Vui lòng thử lại.';
                 errorDiv.style.display = 'block';
             }
         });

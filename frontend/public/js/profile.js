@@ -150,11 +150,12 @@ function badgeClass(badge) {
 }
 
 function formatCurrency(value) {
-    if (value == null) return '';
-    try {
-        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
-    } catch (error) {
-        return `$${value}`;
-    }
+    if (!value) return '0 nghìn đồng';
+    // Convert to thousands (nghìn đồng)
+    const thousands = value / 1000;
+    return new Intl.NumberFormat('vi-VN', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(thousands) + ' nghìn đồng';
 }
 

@@ -39,14 +39,34 @@
                     <input type="text" id="skills" name="skills" placeholder="e.g., Python, React, UI/UX">
                 </div>
                 <div class="form-group">
-                    <label for="category">Category</label>
-                    <select id="category" name="category">
+                    <label for="category">Ngành *</label>
+                    <select id="category" name="category" required>
                         <option value="">Chọn danh mục</option>
-                        <option value="web-development">Web Development</option>
-                        <option value="design">Design</option>
-                        <option value="branding">Branding</option>
-                        <option value="mobile">Mobile App</option>
+                        <option value="web-development">Phát triển Web</option>
+                        <option value="mobile">Ứng dụng Di động</option>
+                        <option value="design">Thiết kế UI/UX</option>
+                        <option value="backend">Backend</option>
+                        <option value="frontend">Frontend</option>
+                        <option value="fullstack">Full Stack</option>
+                        <option value="branding">Thiết kế thương hiệu</option>
+                        <option value="graphic">Thiết kế đồ họa</option>
+                        <option value="video">Thiết kế video</option>
+                        <option value="logo">Thiết kế logo</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label for="minimumBadge">Danh hiệu tối thiểu (để apply)</label>
+                    <select id="minimumBadge" name="minimumBadge">
+                        <option value="">Không yêu cầu</option>
+                        <option value="Top Rated">Top Rated</option>
+                        <option value="Premium">Premium</option>
+                        <option value="Fast Response">Phản hồi nhanh</option>
+                        <option value="Customer Favorite">Khách hàng yêu thích</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="minimumLevel">Level tối thiểu (để apply)</label>
+                    <input type="number" id="minimumLevel" name="minimumLevel" min="1" max="10" placeholder="1-10 (để trống = không yêu cầu)">
                 </div>
                 <div class="form-group">
                     <label for="tags">Tags (comma-separated)</label>
@@ -82,24 +102,73 @@
                 window.location.href = 'login.html';
                 return;
             }
+            
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.style.display = 'none';
+            
+            // Prepare deadline - convert date string to ISO format if provided
+            let deadline = null;
+            const deadlineInput = document.getElementById('deadline').value;
+            if (deadlineInput) {
+                // Convert date input (YYYY-MM-DD) to ISO datetime string
+                deadline = new Date(deadlineInput + 'T23:59:59').toISOString();
+            }
+            
+            // Validate required fields
+            const title = document.getElementById('title').value.trim();
+            const description = document.getElementById('description').value.trim();
+            const budgetValue = parseFloat(document.getElementById('budget').value);
+            
+            if (!title || !description || isNaN(budgetValue) || budgetValue <= 0) {
+                errorDiv.textContent = 'Vui lòng điền đầy đủ thông tin bắt buộc (Tiêu đề, Mô tả, Ngân sách).';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            const minimumLevelInput = document.getElementById('minimumLevel').value;
+            const minimumLevel = minimumLevelInput ? parseInt(minimumLevelInput) : null;
+            
+            // Convert budget_type to uppercase to match backend enum
+            const budgetTypeValue = document.getElementById('budgetType').value.toUpperCase();
+            
             const formData = {
-                title: document.getElementById('title').value,
-                description: document.getElementById('description').value,
-                budget_type: document.getElementById('budgetType').value,
-                budget: parseFloat(document.getElementById('budget').value),
-                skills_required: document.getElementById('skills').value.split(',').map(s => s.trim()).filter(s => s),
-                deadline: document.getElementById('deadline').value || null,
+                title: title,
+                description: description,
+                budget_type: budgetTypeValue, // "FIXED" or "HOURLY"
+                budget: budgetValue,
+                skills_required: document.getElementById('skills').value ? 
+                    document.getElementById('skills').value.split(',').map(s => s.trim()).filter(s => s) : [],
+                deadline: deadline,
                 category: document.getElementById('category').value || null,
-                tags: document.getElementById('tags').value.split(',').map(s => s.trim()).filter(s => s),
-                client_id: user.id
+                tags: document.getElementById('tags').value ? 
+                    document.getElementById('tags').value.split(',').map(s => s.trim()).filter(s => s) : [],
+                minimum_badge: document.getElementById('minimumBadge').value || null,
+                minimum_level: minimumLevel,
+                attachments: [] // Empty array for now
             };
 
+            console.log('Submitting project:', formData);
+            
             const result = await createProject(formData);
             if (result.success) {
-                window.location.href = `workspace.html?project_id=${result.data.id}`;
+                // Redirect to orders page with success flag
+                window.location.href = `orders.html?created=true`;
             } else {
-                document.getElementById('errorMessage').textContent = result.error;
-                document.getElementById('errorMessage').style.display = 'block';
+                let errorMsg = 'Không thể tạo dự án. ';
+                if (result.error) {
+                    if (typeof result.error === 'string') {
+                        errorMsg = result.error;
+                    } else if (typeof result.error === 'object') {
+                        errorMsg += JSON.stringify(result.error, null, 2);
+                    } else {
+                        errorMsg += String(result.error);
+                    }
+                } else {
+                    errorMsg += 'Vui lòng kiểm tra lại thông tin.';
+                }
+                errorDiv.textContent = errorMsg;
+                errorDiv.style.display = 'block';
+                console.error('Project creation failed:', result);
             }
         });
     </script>

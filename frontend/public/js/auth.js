@@ -120,9 +120,51 @@ async function fetchCurrentUser() {
     return null;
 }
 
+// Redirect user to appropriate page based on role
+function redirectByRole(user) {
+    console.log('redirectByRole called with user:', user);
+    
+    if (!user) {
+        console.log('No user object, redirecting to index.html');
+        window.location.href = 'index.html';
+        return;
+    }
+    
+    // Handle role - could be string or enum object
+    let role = user.role;
+    if (typeof role === 'object' && role.value) {
+        role = role.value;
+    } else if (typeof role === 'object' && role.name) {
+        role = role.name.toLowerCase();
+    }
+    
+    if (!role) {
+        console.log('No role found, redirecting to index.html');
+        window.location.href = 'index.html';
+        return;
+    }
+    
+    role = String(role).toLowerCase();
+    console.log('Redirecting based on role:', role);
+    
+    switch (role) {
+        case 'admin':
+            window.location.href = 'admin.html';
+            break;
+        case 'freelancer':
+            window.location.href = 'dashboard_freelancer.html';
+            break;
+        case 'client':
+        default:
+            window.location.href = 'index.html';
+            break;
+    }
+}
+
 window.logout = logout;
 window.getToken = getToken;
 window.getCurrentUserProfile = getCurrentUserProfile;
 window.fetchCurrentUser = fetchCurrentUser;
 window.setCurrentUser = setCurrentUser;
+window.redirectByRole = redirectByRole;
 

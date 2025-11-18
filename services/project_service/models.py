@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey, Enum, Boolean, JSON
+from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey, Enum, Boolean, JSON, TypeDecorator
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -7,18 +7,51 @@ import enum
 Base = declarative_base()
 
 
+class EnumValue(TypeDecorator):
+    """Custom TypeDecorator to store enum values instead of names"""
+    impl = String
+    cache_ok = True
+    
+    def __init__(self, enum_class, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.enum_class = enum_class
+    
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        if isinstance(value, self.enum_class):
+            # Return the enum value (e.g., "pending_approval") instead of name (e.g., "PENDING_APPROVAL")
+            return value.value
+        # If it's already a string, return as is
+        return value
+    
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        # Convert string value back to enum
+        try:
+            return self.enum_class(value)
+        except ValueError:
+            # If value doesn't match any enum, try to find by value
+            for enum_item in self.enum_class:
+                if enum_item.value == value:
+                    return enum_item
+            raise
+
+
 class ProjectStatus(str, enum.Enum):
-    DRAFT = "draft"
-    OPEN = "open"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-    DISPUTED = "disputed"
+    DRAFT = "DRAFT"
+    PENDING_APPROVAL = "pending_approval"  # Database has lowercase for this one
+    OPEN = "OPEN"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    DISPUTED = "DISPUTED"
 
 
 class BudgetType(str, enum.Enum):
-    FIXED = "fixed"
-    HOURLY = "hourly"
+    FIXED = "FIXED"
+    HOURLY = "HOURLY"
 
 
 class BidStatus(str, enum.Enum):
@@ -43,14 +76,16 @@ class Project(Base):
     client_id = Column(Integer, nullable=False, index=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=False)
-    budget_type = Column(Enum(BudgetType), nullable=False)
+    budget_type = Column(EnumValue(BudgetType, length=50), nullable=False)
     budget = Column(Float, nullable=False)
     skills_required = Column(JSON, default=list)
     attachments = Column(JSON, default=list)
     category = Column(String, nullable=True)
     tags = Column(JSON, default=list)
     deadline = Column(DateTime(timezone=True), nullable=True)
-    status = Column(Enum(ProjectStatus), default=ProjectStatus.DRAFT)
+    minimum_badge = Column(String, nullable=True)  # e.g., "Top Rated", "Premium"
+    minimum_level = Column(Integer, nullable=True)  # Minimum freelancer level required
+    status = Column(EnumValue(ProjectStatus, length=50), default=ProjectStatus.PENDING_APPROVAL)
     accepted_bid_id = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

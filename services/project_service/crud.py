@@ -5,7 +5,14 @@ from typing import Optional
 
 
 def create_project(db: Session, client_id: int, **kwargs):
-    project = Project(client_id=client_id, **kwargs)
+    # Remove status from kwargs if present - let model default handle it
+    # This ensures we use the enum value, not a string
+    if 'status' in kwargs:
+        del kwargs['status']
+    
+    # Create project - status will use default from model (PENDING_APPROVAL)
+    # Explicitly set status to use the enum value
+    project = Project(client_id=client_id, status=ProjectStatus.PENDING_APPROVAL, **kwargs)
     db.add(project)
     db.commit()
     db.refresh(project)
@@ -14,6 +21,25 @@ def create_project(db: Session, client_id: int, **kwargs):
 
 def get_project(db: Session, project_id: int):
     return db.query(Project).filter(Project.id == project_id).first()
+
+
+def update_project(db: Session, project_id: int, **kwargs):
+    project = get_project(db, project_id)
+    if not project:
+        return None
+    
+    # Update fields
+    for key, value in kwargs.items():
+        if hasattr(project, key):
+            # Special handling for attachments - allow empty list
+            if key == "attachments":
+                setattr(project, key, value if value is not None else [])
+            elif value is not None:
+                setattr(project, key, value)
+    
+    db.commit()
+    db.refresh(project)
+    return project
 
 
 def get_projects_by_client(db: Session, client_id: int):
@@ -127,5 +153,35 @@ def close_project(db: Session, project_id: int):
     project.status = ProjectStatus.COMPLETED
     db.commit()
     db.refresh(project)
+    return project
+
+
+def approve_project(db: Session, project_id: int):
+    """Approve project by admin - change status from PENDING_APPROVAL to OPEN"""
+    project = get_project(db, project_id)
+    if not project:
+        return None
+    
+    if project.status != ProjectStatus.PENDING_APPROVAL:
+        return None  # Can only approve pending_approval projects
+    
+    project.status = ProjectStatus.OPEN
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+def delete_project(db: Session, project_id: int):
+    project = get_project(db, project_id)
+    if not project:
+        return None
+    
+    # Only allow deletion if project is in draft, pending_approval or open status
+    # Projects in progress or completed should not be deleted
+    if project.status not in [ProjectStatus.DRAFT, ProjectStatus.PENDING_APPROVAL, ProjectStatus.OPEN]:
+        return None
+    
+    db.delete(project)
+    db.commit()
     return project
 

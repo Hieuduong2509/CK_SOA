@@ -123,6 +123,7 @@ services:
     volumes:
       - ./services/user_service:/app
       - ./scripts:/app/scripts
+    restart: unless-stopped
 
   project-service:
     build: ./services/project_service
@@ -135,6 +136,10 @@ services:
       PAYMENTS_SERVICE_URL: http://payments-service:8000
       AUTH_SERVICE_URL: http://auth-service:8000
       RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: projects
     depends_on:
       postgres-main:
         condition: service_healthy
@@ -142,8 +147,11 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     volumes:
       - ./services/project_service:/app
+    restart: unless-stopped
 
   search-service:
     build: ./services/search_service

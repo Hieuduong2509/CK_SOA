@@ -1,7 +1,16 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Union, Dict, Any
 from datetime import datetime
 from models import ProjectStatus, BudgetType, BidStatus, MilestoneStatus
+
+
+class AttachmentInfo(BaseModel):
+    url: str
+    filename: Optional[str] = None
+    content_type: Optional[str] = None
+    size: Optional[int] = None
+    uploaded_at: Optional[str] = None
+    object_name: Optional[str] = None
 
 
 class ProjectCreate(BaseModel):
@@ -11,10 +20,16 @@ class ProjectCreate(BaseModel):
     budget_type: BudgetType
     budget: float
     skills_required: List[str] = []
-    attachments: List[str] = []
+    attachments: List[str] = []  # For backward compatibility, accepts list of strings
     deadline: Optional[datetime] = None
     category: Optional[str] = None
     tags: List[str] = []
+    minimum_badge: Optional[str] = None
+    minimum_level: Optional[int] = None
+
+
+class ProjectUpdate(BaseModel):
+    status: Optional[ProjectStatus] = None
 
 
 class ProjectResponse(BaseModel):
@@ -25,13 +40,15 @@ class ProjectResponse(BaseModel):
     budget_type: BudgetType
     budget: float
     skills_required: List[str]
-    attachments: List[str]
+    attachments: List[Union[str, Dict[str, Any]]]  # Accept both strings (legacy) and objects
     deadline: Optional[datetime]
     status: ProjectStatus
     accepted_bid_id: Optional[int]
     created_at: datetime
     category: Optional[str] = None
     tags: List[str] = []
+    minimum_badge: Optional[str] = None
+    minimum_level: Optional[int] = None
 
     class Config:
         from_attributes = True

@@ -54,6 +54,16 @@
                     ${createIconLink('orders.html', 'fas fa-briefcase', 'Đơn hàng', 'orders')}
                     ${createIconLink('messages.html', 'fas fa-comment-dots', 'Tin nhắn', 'messages')}
                     ${createIconLink('notifications.html', 'fas fa-bell', 'Thông báo', 'notifications')}
+                    ${isAuthenticated && user ? (() => {
+                        let role = user.role;
+                        if (typeof role === 'object' && role.value) {
+                            role = role.value;
+                        } else if (typeof role === 'object' && role.name) {
+                            role = role.name.toLowerCase();
+                        }
+                        role = String(role).toLowerCase();
+                        return role === 'client' ? createIconLink('post_project.html', 'fas fa-plus-circle', 'Đăng bài', 'post-project') : '';
+                    })() : ''}
                     ${isAuthenticated ? renderUserSegment(user) : renderAuthSegment()}
                 </div>
             </nav>
@@ -111,7 +121,35 @@
         const avatarBtn = document.getElementById('navbarAvatar');
         if (avatarBtn) {
             avatarBtn.addEventListener('click', () => {
-                window.location.href = 'user.html';
+                // Redirect based on user role
+                const user = state.user || getCurrentUserProfile();
+                if (!user || !user.role) {
+                    window.location.href = 'user.html';
+                    return;
+                }
+                
+                // Handle role - could be string or enum object
+                let role = user.role;
+                if (typeof role === 'object' && role.value) {
+                    role = role.value;
+                } else if (typeof role === 'object' && role.name) {
+                    role = role.name.toLowerCase();
+                }
+                role = String(role).toLowerCase();
+                
+                // Redirect based on role
+                switch (role) {
+                    case 'admin':
+                        window.location.href = 'admin.html';
+                        break;
+                    case 'freelancer':
+                        window.location.href = 'freelancers.html';
+                        break;
+                    case 'client':
+                    default:
+                        window.location.href = 'user.html';
+                        break;
+                }
             });
         }
 

@@ -79,8 +79,9 @@
                 // Auto login after signup
                 const loginResult = await login(email, password);
                 if (loginResult.success) {
-                    // Redirect về trang chủ sau khi đăng ký và đăng nhập thành công
-                    window.location.href = 'index.html';
+                    // Redirect theo role của user sau khi đăng ký và đăng nhập thành công
+                    const user = loginResult.data.user;
+                    redirectByRole(user);
                 }
             } else {
                 errorDiv.textContent = result.error;
