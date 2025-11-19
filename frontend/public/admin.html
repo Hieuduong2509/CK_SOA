@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="admin-body">
+    <main class="admin-dashboard">
+        <aside class="admin-sidebar">
+            <div class="admin-brand">
+                <i class="fas fa-shield-alt"></i>
+                <div>
+                    <p>CodeDesign</p>
+                    <small>Admin Center</small>
+                </div>
+            </div>
+            <nav class="admin-nav">
+                <button class="admin-nav-btn active" data-panel="projects">
+                    <i class="fas fa-clipboard-check"></i>
+                    Duyệt bài đăng
+                </button>
+                <button class="admin-nav-btn" data-panel="users">
+                    <i class="fas fa-user-check"></i>
+                    Tài khoản
+                </button>
+                <button class="admin-nav-btn" data-panel="disputes">
+                    <i class="fas fa-gavel"></i>
+                    Khiếu nại & Escrow
+                </button>
+                <button class="admin-nav-btn" data-panel="analytics">
+                    <i class="fas fa-chart-line"></i>
+                    Thống kê
+                </button>
+            </nav>
+        </aside>
+
+        <section class="admin-content">
+            <header class="admin-header">
+                <div>
+                    <p class="admin-breadcrumb">Trang quản trị</p>
+                    <h1>Bảng điều khiển tổng quan</h1>
+                </div>
+                <div class="admin-header-actions">
+                    <div id="adminUserBadge" class="admin-user-badge">
+                        <div class="avatar-placeholder">A</div>
+                        <div>
+                            <p id="adminName">Admin</p>
+                            <small>Quyền quản trị</small>
+                        </div>
+                    </div>
+                    <button id="adminLogoutBtn" class="btn btn-secondary btn-small">
+                        <i class="fas fa-sign-out-alt"></i> Đăng xuất
+                    </button>
+                </div>
+            </header>
+
+            <div class="admin-panel-container">
+                <!-- Panel: Project Approval -->
+                <section id="admin-panel-projects" class="admin-panel active">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Duyệt bài đăng</h2>
+                            <p>Những dự án đang chờ được xuất bản lên sàn</p>
+                        </div>
+                        <button class="btn btn-secondary btn-small" id="refreshProjectsBtn">
+                            <i class="fas fa-rotate"></i> Làm mới
+                        </button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Tiêu đề</th>
+                                    <th>Ngân sách</th>
+                                    <th>Khách hàng</th>
+                                    <th>Ngày tạo</th>
+                                    <th style="width: 120px;">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pendingProjectsBody">
+                                <tr><td colspan="6" class="text-muted">Đang tải dữ liệu...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Panel: User Verification -->
+                <section id="admin-panel-users" class="admin-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Quản lý tài khoản</h2>
+                            <p>Theo dõi và kiểm soát trạng thái của khách hàng và freelancer</p>
+                        </div>
+                        <div class="panel-action-group">
+                            <button class="btn btn-secondary btn-small" id="refreshClientAccountsBtn">
+                                <i class="fas fa-users"></i> Làm mới khách hàng
+                            </button>
+                            <button class="btn btn-secondary btn-small" id="refreshFreelancerAccountsBtn">
+                                <i class="fas fa-user-tie"></i> Làm mới freelancer
+                            </button>
+                        </div>
+                    </div>
+                    <div class="admin-manage-grid">
+                        <div class="admin-manage-column">
+                            <header class="column-header">
+                                <h3>Khách hàng</h3>
+                                <p>Tài khoản đăng dự án</p>
+                            </header>
+                            <div id="clientAccountsList" class="card-list">
+                                <div class="empty-state">Đang tải dữ liệu...</div>
+                            </div>
+                        </div>
+                        <div class="admin-manage-column">
+                            <header class="column-header">
+                                <h3>Freelancer</h3>
+                                <p>Tài khoản thực hiện dự án</p>
+                            </header>
+                            <div id="freelancerAccountsList" class="card-list">
+                                <div class="empty-state">Đang tải dữ liệu...</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Panel: Disputes -->
+                <section id="admin-panel-disputes" class="admin-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Khiếu nại & quyết toán Escrow</h2>
+                            <p>Xem và xử lý các tranh chấp giữa khách hàng và freelancer</p>
+                        </div>
+                        <button class="btn btn-secondary btn-small" id="refreshDisputesBtn">
+                            <i class="fas fa-rotate"></i> Làm mới
+                        </button>
+                    </div>
+                    <div id="disputesList" class="card-list">
+                        <div class="empty-state">Đang tải dữ liệu...</div>
+                    </div>
+                </section>
+
+                <!-- Panel: Analytics -->
+                <section id="admin-panel-analytics" class="admin-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Thống kê vận hành</h2>
+                            <p>Tổng quan doanh thu, người dùng và hoạt động trên nền tảng</p>
+                        </div>
+                        <button class="btn btn-secondary btn-small" id="refreshAnalyticsBtn">
+                            <i class="fas fa-rotate"></i> Làm mới
+                        </button>
+                    </div>
+                    <div id="analyticsGrid" class="analytics-grid">
+                        <!-- Analytics cards render here -->
+                    </div>
+                    <div id="analyticsChartPlaceholder" class="analytics-placeholder">
+                        <p>Biểu đồ phân bổ doanh thu và tăng trưởng sẽ hiển thị tại đây.</p>
+                    </div>
+                </section>
+            </div>
+        </section>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>
+

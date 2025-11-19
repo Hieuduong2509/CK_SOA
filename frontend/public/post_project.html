@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Post Project - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main>
+        <div class="form-container" style="max-width: 700px;">
+            <h2 style="text-align: center; margin-bottom: 2rem;">Post a Project</h2>
+            <form id="projectForm">
+                <div class="form-group">
+                    <label for="title">Project Title</label>
+                    <input type="text" id="title" name="title" required>
+                </div>
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <textarea id="description" name="description" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="budgetType">Budget Type</label>
+                    <select id="budgetType" name="budgetType" required>
+                        <option value="fixed">Fixed Price</option>
+                        <option value="hourly">Hourly Rate</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="budget">Budget ($)</label>
+                    <input type="number" id="budget" name="budget" min="0" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="skills">Required Skills (comma-separated)</label>
+                    <input type="text" id="skills" name="skills" placeholder="e.g., Python, React, UI/UX">
+                </div>
+                <div class="form-group">
+                    <label for="category">Ngành *</label>
+                    <select id="category" name="category" required>
+                        <option value="">Chọn danh mục</option>
+                        <option value="web-development">Phát triển Web</option>
+                        <option value="mobile">Ứng dụng Di động</option>
+                        <option value="design">Thiết kế UI/UX</option>
+                        <option value="backend">Backend</option>
+                        <option value="frontend">Frontend</option>
+                        <option value="fullstack">Full Stack</option>
+                        <option value="branding">Thiết kế thương hiệu</option>
+                        <option value="graphic">Thiết kế đồ họa</option>
+                        <option value="video">Thiết kế video</option>
+                        <option value="logo">Thiết kế logo</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="minimumBadge">Danh hiệu tối thiểu (để apply)</label>
+                    <select id="minimumBadge" name="minimumBadge">
+                        <option value="">Không yêu cầu</option>
+                        <option value="Top Rated">Top Rated</option>
+                        <option value="Premium">Premium</option>
+                        <option value="Fast Response">Phản hồi nhanh</option>
+                        <option value="Customer Favorite">Khách hàng yêu thích</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="minimumLevel">Level tối thiểu (để apply)</label>
+                    <input type="number" id="minimumLevel" name="minimumLevel" min="1" max="10" placeholder="1-10 (để trống = không yêu cầu)">
+                </div>
+                <div class="form-group">
+                    <label for="tags">Tags (comma-separated)</label>
+                    <input type="text" id="tags" name="tags" placeholder="ví dụ: landing page, ecommerce">
+                </div>
+                <div class="form-group">
+                    <label for="deadline">Deadline (optional)</label>
+                    <input type="date" id="deadline" name="deadline">
+                </div>
+                <div class="form-group">
+                    <label for="projectMedia">Hình ảnh / Video minh họa</label>
+                    <input type="file" id="projectMedia" name="projectMedia" accept="image/*,video/*" multiple>
+                    <small class="form-help">Tối đa 5 ảnh và 1 video. Giới hạn 50MB mỗi tệp.</small>
+                    <div id="mediaPreview" class="media-preview-grid"></div>
+                </div>
+                <div class="form-group">
+                    <label for="projectFiles">Tệp đính kèm bổ sung</label>
+                    <input type="file" id="projectFiles" name="projectFiles" multiple>
+                    <small class="form-help">Có thể tải HTML, CSS, JS, PDF, ZIP, v.v... (tối đa 5 tệp, 50MB mỗi tệp).</small>
+                    <div id="filePreview" class="media-preview-grid"></div>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">
+                    <i class="fas fa-paper-plane"></i> Publish Project
+                </button>
+            </form>
+            <div id="errorMessage" style="color: var(--danger-color); margin-top: 1rem; text-align: center; display: none;"></div>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/projects.js"></script>
+    <script>
+        redirectIfNotAuthenticated();
+        let currentUser = getCurrentUserProfile();
+        if (!currentUser) {
+            fetchCurrentUser().then(user => currentUser = user);
+        }
+
+        document.getElementById('projectForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const user = currentUser || getCurrentUserProfile();
+            if (!user) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.style.display = 'none';
+            
+            // Prepare deadline - convert date string to ISO format if provided
+            let deadline = null;
+            const deadlineInput = document.getElementById('deadline').value;
+            if (deadlineInput) {
+                // Convert date input (YYYY-MM-DD) to ISO datetime string
+                deadline = new Date(deadlineInput + 'T23:59:59').toISOString();
+            }
+            
+            // Validate required fields
+            const title = document.getElementById('title').value.trim();
+            const description = document.getElementById('description').value.trim();
+            const budgetValue = parseFloat(document.getElementById('budget').value);
+            
+            if (!title || !description || isNaN(budgetValue) || budgetValue <= 0) {
+                errorDiv.textContent = 'Vui lòng điền đầy đủ thông tin bắt buộc (Tiêu đề, Mô tả, Ngân sách).';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            const minimumLevelInput = document.getElementById('minimumLevel').value;
+            const minimumLevel = minimumLevelInput ? parseInt(minimumLevelInput) : null;
+            
+            // Convert budget_type to uppercase to match backend enum
+            const budgetTypeValue = document.getElementById('budgetType').value.toUpperCase();
+            
+            const formData = {
+                title: title,
+                description: description,
+                budget_type: budgetTypeValue, // "FIXED" or "HOURLY"
+                budget: budgetValue,
+                skills_required: document.getElementById('skills').value ? 
+                    document.getElementById('skills').value.split(',').map(s => s.trim()).filter(s => s) : [],
+                deadline: deadline,
+                category: document.getElementById('category').value || null,
+                tags: document.getElementById('tags').value ? 
+                    document.getElementById('tags').value.split(',').map(s => s.trim()).filter(s => s) : [],
+                minimum_badge: document.getElementById('minimumBadge').value || null,
+                minimum_level: minimumLevel,
+                attachments: [] // Empty array for now
+            };
+
+            console.log('Submitting project:', formData);
+            
+            const result = await createProject(formData);
+            if (result.success) {
+                try {
+                    const mediaFiles = mediaInput ? Array.from(mediaInput.files || []) : [];
+                    const otherFiles = fileInput ? Array.from(fileInput.files || []) : [];
+                    if (mediaFiles.length || otherFiles.length) {
+                        await uploadProjectAssets(result.data.id, mediaFiles, otherFiles);
+                    }
+                } catch (uploadError) {
+                    console.error('Upload initial media failed:', uploadError);
+                    alert('Dự án đã tạo nhưng một số tệp đính kèm không tải lên được. Bạn có thể thêm lại trong workspace.');
+                }
+
+                const redirectTarget = ensureFreelancerRole(user)
+                    ? 'order_freelancer.html'
+                    : 'orders.html';
+                window.location.href = `${redirectTarget}?created=true`;
+            } else {
+                let errorMsg = 'Không thể tạo dự án. ';
+                if (result.error) {
+                    if (typeof result.error === 'string') {
+                        errorMsg = result.error;
+                    } else if (typeof result.error === 'object') {
+                        errorMsg += JSON.stringify(result.error, null, 2);
+                    } else {
+                        errorMsg += String(result.error);
+                    }
+                } else {
+                    errorMsg += 'Vui lòng kiểm tra lại thông tin.';
+                }
+                errorDiv.textContent = errorMsg;
+                errorDiv.style.display = 'block';
+                console.error('Project creation failed:', result);
+            }
+        });
+        const mediaInput = document.getElementById('projectMedia');
+        const mediaPreview = document.getElementById('mediaPreview');
+        const fileInput = document.getElementById('projectFiles');
+        const filePreview = document.getElementById('filePreview');
+
+        const MAX_IMAGE_COUNT = 5;
+        const MAX_VIDEO_COUNT = 1;
+        const MAX_OTHER_FILES = 5;
+        const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+
+        function ensureFreelancerRole(userData) {
+            if (!userData || !userData.role) return false;
+            const roleValue = typeof userData.role === 'string'
+                ? userData.role
+                : (userData.role.value || userData.role.name || '');
+            return roleValue.toLowerCase() === 'freelancer';
+        }
+
+        function formatBytes(bytes) {
+            if (!bytes && bytes !== 0) return '';
+            if (bytes < 1024) return `${bytes} B`;
+            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+            return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        }
+
+        function validateMediaSelection(fileList) {
+            const files = Array.from(fileList || []);
+            if (!files.length) {
+                return { images: [], videos: [] };
+            }
+
+            const invalid = files.filter(file => !(file.type.startsWith('image/') || file.type.startsWith('video/')));
+            if (invalid.length) {
+                throw new Error('Chỉ chấp nhận tệp hình ảnh hoặc video.');
+            }
+
+            const oversized = files.filter(file => file.size > MAX_FILE_SIZE_BYTES);
+            if (oversized.length) {
+                const names = oversized.map(f => `${f.name} (${formatBytes(f.size)})`).join(', ');
+                throw new Error(`Các tệp sau vượt quá giới hạn 50MB: ${names}`);
+            }
+
+            const images = files.filter(file => file.type.startsWith('image/'));
+            const videos = files.filter(file => file.type.startsWith('video/'));
+
+            if (images.length > MAX_IMAGE_COUNT) {
+                throw new Error(`Chỉ chọn tối đa ${MAX_IMAGE_COUNT} ảnh.`);
+            }
+            if (videos.length > MAX_VIDEO_COUNT) {
+                throw new Error(`Chỉ chọn tối đa ${MAX_VIDEO_COUNT} video.`);
+            }
+
+            return { images, videos };
+        }
+
+        function validateOtherFiles(fileList) {
+            const files = Array.from(fileList || []);
+            if (!files.length) return [];
+
+            if (files.length > MAX_OTHER_FILES) {
+                throw new Error(`Chỉ chọn tối đa ${MAX_OTHER_FILES} tệp bổ sung.`);
+            }
+
+            const oversized = files.filter(file => file.size > MAX_FILE_SIZE_BYTES);
+            if (oversized.length) {
+                const names = oversized.map(f => `${f.name} (${formatBytes(f.size)})`).join(', ');
+                throw new Error(`Các tệp sau vượt quá giới hạn 50MB: ${names}`);
+            }
+
+            return files;
+        }
+
+        function renderMediaPreview(files) {
+            if (!mediaPreview) return;
+            if (!files.length) {
+                mediaPreview.innerHTML = '';
+                return;
+            }
+            mediaPreview.innerHTML = files.map(file => {
+                const isImage = file.type.startsWith('image/');
+                const icon = isImage ? 'fa-image' : 'fa-video';
+                const label = isImage ? 'Ảnh' : 'Video';
+                return `
+                    <div class="media-preview-item">
+                        <i class="fas ${icon}"></i>
+                        <div>
+                            <strong>${label}</strong>
+                            <span>${file.name}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderFilePreview(files) {
+            if (!filePreview) return;
+            if (!files.length) {
+                filePreview.innerHTML = '';
+                return;
+            }
+            filePreview.innerHTML = Array.from(files).map(file => `
+                <div class="media-preview-item">
+                    <i class="fas fa-file-code"></i>
+                    <div>
+                        <strong>Tệp</strong>
+                        <span>${file.name} • ${formatBytes(file.size)}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        if (mediaInput) {
+            mediaInput.addEventListener('change', (event) => {
+                const files = event.target.files;
+                try {
+                    const { images, videos } = validateMediaSelection(files);
+                    renderMediaPreview([...images, ...videos]);
+                } catch (error) {
+                    alert(error.message);
+                    mediaInput.value = '';
+                    renderMediaPreview([]);
+                }
+            });
+        }
+
+        if (fileInput) {
+            fileInput.addEventListener('change', (event) => {
+                const files = event.target.files;
+                try {
+                    const validFiles = validateOtherFiles(files);
+                    renderFilePreview(validFiles);
+                } catch (error) {
+                    alert(error.message);
+                    fileInput.value = '';
+                    renderFilePreview([]);
+                }
+            });
+        }
+
+        async function uploadProjectAssets(projectId, mediaFiles = [], otherFiles = []) {
+            const token = getToken();
+            if (!token) throw new Error('Missing token');
+
+            const uploadQueue = [...mediaFiles, ...otherFiles];
+            if (!uploadQueue.length) return;
+
+            for (const file of uploadQueue) {
+                if (file.size > MAX_FILE_SIZE_BYTES) {
+                    throw new Error(`Tệp ${file.name} vượt quá giới hạn 50MB.`);
+                }
+                const form = new FormData();
+                form.append('file', file);
+                const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/attachments`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: form
+                });
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.detail || `Không thể tải tệp ${file.name}`);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
+

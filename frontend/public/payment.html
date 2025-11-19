@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thanh toán - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main>
+        <div class="container" style="max-width: 900px; padding: 2rem 0;">
+            <h1 style="text-align: center; margin-bottom: 2rem;">Thanh toán</h1>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                <!-- Thông tin đơn hàng -->
+                <div class="card">
+                    <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Thông tin đơn hàng</h2>
+                    <div id="orderSummary">
+                        <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md); margin-bottom: 1rem;">
+                            <p style="font-weight: 600; margin-bottom: 0.5rem;">Freelancer</p>
+                            <p id="freelancerName" style="color: var(--text-secondary);">Đang tải...</p>
+                        </div>
+                        <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md); margin-bottom: 1rem;">
+                            <p style="font-weight: 600; margin-bottom: 0.5rem;">Gói dịch vụ</p>
+                            <p id="packageName" style="color: var(--text-secondary);">Đang tải...</p>
+                        </div>
+                        <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md);">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                <span>Tạm tính:</span>
+                                <span id="subtotal">$0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                <span>Phí dịch vụ:</span>
+                                <span id="serviceFee">$0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding-top: 1rem; border-top: 1px solid var(--border-color); font-weight: 600; font-size: 1.1rem;">
+                                <span>Tổng cộng:</span>
+                                <span id="total" style="color: var(--primary-color);">$0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Thông tin thanh toán -->
+                <div class="card">
+                    <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Thông tin thanh toán</h2>
+                    <form id="paymentForm">
+                        <div class="form-group">
+                            <label for="paymentMethod">Phương thức thanh toán</label>
+                            <select id="paymentMethod" name="paymentMethod" required>
+                                <option value="credit_card" selected>Thẻ tín dụng/Ghi nợ</option>
+                                <option value="bank_transfer">Chuyển khoản ngân hàng</option>
+                                <option value="e_wallet">Ví điện tử</option>
+                            </select>
+                        </div>
+
+                        <div id="creditCardFields" style="display: block;">
+                            <div class="form-group">
+                                <label for="cardNumber">Số thẻ <span style="color: var(--danger-color);">*</span></label>
+                                <input type="text" id="cardNumber" name="cardNumber" placeholder="1234 5678 9012 3456" maxlength="19" required>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label for="expiryDate">Ngày hết hạn <span style="color: var(--danger-color);">*</span></label>
+                                    <input type="text" id="expiryDate" name="expiryDate" placeholder="MM/YY" maxlength="5" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cvv">CVV <span style="color: var(--danger-color);">*</span></label>
+                                    <input type="text" id="cvv" name="cvv" placeholder="123" maxlength="3" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="cardholderName">Tên chủ thẻ <span style="color: var(--danger-color);">*</span></label>
+                                <input type="text" id="cardholderName" name="cardholderName" placeholder="NGUYEN VAN A" required>
+                            </div>
+                        </div>
+
+                        <div id="bankTransferFields" style="display: none;">
+                            <div class="form-group">
+                                <label>Thông tin chuyển khoản</label>
+                                <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md);">
+                                    <p><strong>Ngân hàng:</strong> Techcombank</p>
+                                    <p><strong>Số tài khoản:</strong> 1234567890</p>
+                                    <p><strong>Chủ tài khoản:</strong> CodeDesign Marketplace</p>
+                                    <p><strong>Nội dung:</strong> <span id="transferContent">PAY-XXXXXX</span></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="eWalletFields" style="display: none;">
+                            <div class="form-group">
+                                <label for="eWalletType">Loại ví điện tử</label>
+                                <select id="eWalletType" name="eWalletType">
+                                    <option value="">Chọn ví</option>
+                                    <option value="momo">MoMo</option>
+                                    <option value="zalo_pay">ZaloPay</option>
+                                    <option value="vnpay">VNPay</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                            <i class="fas fa-lock"></i> Xác nhận thanh toán
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card" style="background: #FEF3C7; border: 1px solid #FCD34D;">
+                <p style="margin: 0; color: #92400E;">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>Lưu ý:</strong> Thanh toán của bạn sẽ được giữ an toàn trong hệ thống và chỉ được chuyển cho freelancer sau khi dự án hoàn thành.
+                </p>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script>
+        // API_BASE is defined in config.js
+        var API_BASE = window.API_BASE || window.location.origin;
+        
+        // Get freelancer_id and package_id from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const freelancerId = urlParams.get('freelancer_id');
+        const packageId = urlParams.get('package_id');
+
+        // Show/hide payment method fields
+        document.getElementById('paymentMethod').addEventListener('change', function() {
+            const method = this.value;
+            document.getElementById('creditCardFields').style.display = method === 'credit_card' ? 'block' : 'none';
+            document.getElementById('bankTransferFields').style.display = method === 'bank_transfer' ? 'block' : 'none';
+            document.getElementById('eWalletFields').style.display = method === 'e_wallet' ? 'block' : 'none';
+        });
+
+        // Format card number
+        document.getElementById('cardNumber')?.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\s/g, '');
+            let formattedValue = value.match(/.{1,4}/g)?.join(' ') || value;
+            e.target.value = formattedValue;
+        });
+
+        // Format expiry date
+        document.getElementById('expiryDate')?.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length >= 2) {
+                value = value.substring(0, 2) + '/' + value.substring(2, 4);
+            }
+            e.target.value = value;
+        });
+
+        // Only allow numbers for CVV
+        document.getElementById('cvv')?.addEventListener('input', function(e) {
+            e.target.value = e.target.value.replace(/\D/g, '');
+        });
+
+        // Load order summary from API
+        async function loadOrderSummary() {
+            if (!freelancerId || !packageId) {
+                document.getElementById('freelancerName').textContent = 'Chưa chọn freelancer hoặc gói dịch vụ';
+                document.getElementById('packageName').textContent = 'Vui lòng quay lại và chọn gói dịch vụ';
+                return;
+            }
+
+            try {
+                // Load freelancer profile
+                const profileRes = await fetch(`${API_BASE}/api/v1/users/${freelancerId}`);
+                if (!profileRes.ok) {
+                    throw new Error('Không thể tải thông tin freelancer');
+                }
+                const profile = await profileRes.json();
+
+                // Load packages
+                const packagesRes = await fetch(`${API_BASE}/api/v1/users/${freelancerId}/packages`);
+                if (!packagesRes.ok) {
+                    throw new Error('Không thể tải danh sách gói dịch vụ');
+                }
+                const packages = await packagesRes.json();
+                const selectedPackage = packages.find(pkg => pkg.id === parseInt(packageId));
+
+                if (!selectedPackage) {
+                    throw new Error('Không tìm thấy gói dịch vụ đã chọn');
+                }
+
+                // Display freelancer info
+                document.getElementById('freelancerName').textContent = profile.display_name || profile.name || 'Freelancer';
+                
+                // Display package info
+                document.getElementById('packageName').innerHTML = `
+                    <strong>${selectedPackage.name}</strong><br>
+                    <span style="color: var(--text-secondary); font-size: 0.9rem;">${selectedPackage.description || ''}</span>
+                `;
+
+                // Calculate pricing
+                const subtotal = selectedPackage.price || 0;
+                const serviceFee = subtotal * 0.1; // 10% service fee
+                const total = subtotal + serviceFee;
+
+                // Format currency
+                function formatCurrency(value) {
+                    if (!value) return '0 nghìn đồng';
+                    // Convert to thousands (nghìn đồng)
+                    const thousands = value / 1000;
+                    return new Intl.NumberFormat('vi-VN', {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0
+                    }).format(thousands) + ' nghìn đồng';
+                }
+
+                document.getElementById('subtotal').textContent = formatCurrency(subtotal);
+                document.getElementById('serviceFee').textContent = formatCurrency(serviceFee);
+                document.getElementById('total').textContent = formatCurrency(total);
+                
+                // Generate transfer content
+                const transferContent = `PAY-${Date.now().toString().slice(-6)}`;
+                document.getElementById('transferContent').textContent = transferContent;
+
+            } catch (error) {
+                console.error('Error loading order summary:', error);
+                document.getElementById('freelancerName').textContent = 'Lỗi: ' + error.message;
+                document.getElementById('packageName').textContent = 'Không thể tải thông tin';
+            }
+        }
+
+        // Handle form submission
+        document.getElementById('paymentForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            alert('Chức năng thanh toán sẽ được triển khai sau!');
+            // TODO: Implement payment processing
+        });
+
+        // Load order summary on page load
+        loadOrderSummary();
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Dashboard - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main>
+        <div class="container" style="padding: 2rem 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <div>
+                    <h1 id="userGreeting" style="margin-bottom: 0.5rem;">My Dashboard</h1>
+                    <p id="userSubtitle" style="color: var(--text-secondary);"></p>
+                </div>
+                <div>
+                    <a href="post_project.html" class="btn btn-primary" style="margin-right: 0.5rem;">Đăng dự án mới</a>
+                    <a href="freelancers.html" class="btn btn-secondary">Tìm freelancer</a>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                <div style="background: white; padding: 1.5rem; border-radius: var(--radius-xl); box-shadow: var(--shadow-md);">
+                    <h3 style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;">Active Projects</h3>
+                    <div style="font-size: 2rem; font-weight: 700; color: var(--primary-color);" id="activeProjects">0</div>
+                </div>
+                <div style="background: white; padding: 1.5rem; border-radius: var(--radius-xl); box-shadow: var(--shadow-md);">
+                    <h3 style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;">Messages</h3>
+                    <div style="font-size: 2rem; font-weight: 700; color: var(--primary-color);" id="messages">0</div>
+                </div>
+                <div style="background: white; padding: 1.5rem; border-radius: var(--radius-xl); box-shadow: var(--shadow-md);">
+                    <h3 style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.5rem;">Balance</h3>
+                    <div style="font-size: 2rem; font-weight: 700; color: var(--primary-color);" id="balance">$0</div>
+                </div>
+            </div>
+            <div style="background: white; padding: 1.5rem; border-radius: var(--radius-xl); box-shadow: var(--shadow-md); margin-bottom: 2rem;">
+                <h2 style="margin-bottom: 1rem;">Thông tin tài khoản</h2>
+                <div id="userMeta" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    <!-- user info populated by JS -->
+                </div>
+            </div>
+
+            <h2 style="margin-bottom: 1rem;">My Projects</h2>
+            <div id="projectsList">
+                <!-- Projects will be loaded here -->
+            </div>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
+

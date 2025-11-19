@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hồ sơ Freelancer - CodeDesign</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main class="user-page">
+        <aside class="user-sidebar">
+            <div class="user-card" id="profileSummary">
+                <div class="loading-placeholder">Đang tải hồ sơ...</div>
+            </div>
+
+            <div class="sidebar-card" id="quickLinksCard">
+                <h3>Điều hướng nhanh</h3>
+                <div class="quick-links">
+                    <a href="#overviewSection"><i class="fas fa-user"></i> Tổng quan</a>
+                    <a href="#portfolioSection"><i class="fas fa-briefcase"></i> Portfolio</a>
+                    <a href="#projectHistorySection"><i class="fas fa-diagram-project"></i> Dự án</a>
+                    <a href="#reviewsSection"><i class="fas fa-star"></i> Đánh giá</a>
+                </div>
+            </div>
+
+            <div class="sidebar-card" id="ratingStatsCard">
+                <h3>Đánh giá tổng thể</h3>
+                <div id="ratingOverview" class="rating-overview">
+                    <div class="rating-score" id="averageRatingValue">--</div>
+                    <div class="rating-meta">
+                        <span>Trung bình sao</span>
+                        <small id="averageRatingCount">Chưa có đánh giá</small>
+                    </div>
+                </div>
+                <div id="starChart" class="star-chart">
+                    <!-- Star distribution rows -->
+                </div>
+            </div>
+        </aside>
+
+        <section class="user-main">
+            <section class="card" id="overviewSection">
+                <div class="card-header">
+                    <div>
+                        <h2>Giới thiệu & Danh hiệu</h2>
+                        <p class="card-subtitle">Hiển thị tiểu sử, kỹ năng chính và các danh hiệu nổi bật</p>
+                    </div>
+                    <span class="status-chip" id="profileStatus">Đang cập nhật</span>
+                </div>
+                <div id="overviewContent">
+                    <p class="text-muted">Đang tải mô tả...</p>
+                </div>
+                <div id="badgeList" class="badge-list"></div>
+            </section>
+
+            <section class="card" id="portfolioSection">
+                <div class="card-header">
+                    <div>
+                        <h2>Portfolio tiêu biểu</h2>
+                        <p class="card-subtitle">Những công việc nổi bật mà freelancer đã thực hiện</p>
+                    </div>
+                </div>
+                <div id="portfolioGrid" class="portfolio-grid"></div>
+            </section>
+
+            <section class="card" id="projectHistorySection">
+                <div class="card-header">
+                    <div>
+                        <h2>Dự án đã thực hiện</h2>
+                        <p class="card-subtitle">Tổng hợp theo phản hồi của khách hàng</p>
+                    </div>
+                </div>
+                <div id="projectHistoryList" class="project-history-list"></div>
+            </section>
+
+            <section class="card" id="reviewsSection">
+                <div class="card-header">
+                    <div>
+                        <h2>Đánh giá của khách hàng</h2>
+                        <p class="card-subtitle">Chi tiết nhận xét và số sao theo từng dự án</p>
+                    </div>
+                </div>
+                <div id="reviewsList" class="reviews-list"></div>
+            </section>
+        </section>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/profile.js"></script>
+    <script>
+        (function() {
+            const params = new URLSearchParams(window.location.search);
+            let userId = params.get('id');
+            if (!userId) {
+                const currentUser = getCurrentUserProfile();
+                if (currentUser) {
+                    userId = currentUser.id;
+                }
+            }
+            if (userId) {
+                loadProfile(userId);
+            } else {
+                const summary = document.getElementById('profileSummary');
+                if (summary) {
+                    summary.innerHTML = '<p style="color: var(--danger-color);">Không tìm thấy thông tin freelancer.</p>';
+                }
+            }
+        })();
+    </script>
+</body>
+</html>
+

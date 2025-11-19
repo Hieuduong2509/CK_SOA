@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Việc đang tuyển - CodeDesign</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main class="page-container">
+        <section class="hero hero--compact">
+            <div class="container">
+                <div class="hero-content">
+                    <p class="eyebrow">Freelancer Hub</p>
+                    <h1 class="hero-title">Tìm việc phù hợp với kỹ năng của bạn</h1>
+                    <p class="hero-subtitle">
+                        Chỉ hiển thị các dự án đã được duyệt và đang mở nhận hồ sơ. Lọc theo kỹ năng, ngân sách, 
+                        và tìm kiếm theo từ khóa để chọn việc nhanh hơn.
+                    </p>
+
+                    <div class="search-bar-large">
+                        <input type="text" id="projectSearchInput" placeholder="Tìm theo tiêu đề, mô tả...">
+                        <button class="btn btn-primary" id="projectSearchButton">
+                            <i class="fas fa-search"></i> Tìm việc
+                        </button>
+                    </div>
+
+                    <div class="filter-container">
+                        <input type="text" id="skillsFilter" class="filter-input" placeholder="Kỹ năng (ví dụ: React, UI/UX)">
+                        <select id="budgetFilter" class="filter-select">
+                            <option value="all">Ngân sách (Tất cả)</option>
+                            <option value="low">Dưới 10 triệu</option>
+                            <option value="mid">10 - 50 triệu</option>
+                            <option value="high">Trên 50 triệu</option>
+                        </select>
+                        <select id="budgetTypeFilter" class="filter-select">
+                            <option value="all">Loại ngân sách</option>
+                            <option value="FIXED">Trọn gói</option>
+                            <option value="HOURLY">Theo giờ</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="container">
+                <div class="section-header">
+                    <div>
+                        <h2 class="section-title">Dự án đang mở</h2>
+                        <p class="section-subtitle">Chỉ hiển thị trạng thái OPEN từ hệ thống</p>
+                    </div>
+                    <div id="projectCount" class="section-subtitle"></div>
+                </div>
+                <div id="projectsList" class="project-list">
+                    <div class="empty-state">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Đang tải dự án...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>CodeDesign</h3>
+                <p>Không gian dành riêng cho freelancer tìm việc chất lượng.</p>
+            </div>
+            <div class="footer-section">
+                <h4>Công cụ nhanh</h4>
+                <a href="browse_projects.html">Việc đang mở</a>
+                <a href="orders.html">Đơn hàng của tôi</a>
+                <a href="freelancer_profile.html">Hồ sơ cá nhân</a>
+            </div>
+            <div class="footer-section">
+                <h4>Hỗ trợ</h4>
+                <a href="messages.html">Liên hệ hỗ trợ</a>
+                <a href="notifications.html">Thông báo hệ thống</a>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/browse_projects.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản lý Dự án - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main class="page-container">
+        <header class="page-header">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <h1>Quản lý Dự án</h1>
+                    <p>Theo dõi các dự án bạn đã đăng hoặc tham gia.</p>
+                </div>
+                <a href="post_project.html" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <i class="fas fa-plus"></i> Đăng dự án mới
+                </a>
+            </div>
+        </header>
+
+        <section class="card">
+            <div id="ordersGrid" class="orders-grid">
+                <p style="color: var(--text-secondary);">Đang tải dự án...</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/orders.js"></script>
+</body>
+</html>

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tìm kiếm Freelancer - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main>
+        <section style="padding: 2rem 0; background: var(--bg-gray);">
+            <div class="container">
+                <div class="search-bar-large">
+                    <input type="text" id="searchInput" placeholder="Tìm kiếm kỹ năng, dịch vụ hoặc freelancer...">
+                    <button class="btn btn-primary" onclick="performSearch()">
+                        <i class="fas fa-search"></i> Tìm kiếm
+                    </button>
+                </div>
+                <div class="filter-container">
+                    <select id="skillFilter" class="filter-select">
+                        <option value="">Tất cả kỹ năng</option>
+                        <option value="Python">Python</option>
+                        <option value="JavaScript">JavaScript</option>
+                        <option value="React">React</option>
+                        <option value="UI/UX">UI/UX</option>
+                    </select>
+                    <select id="ratingFilter" class="filter-select">
+                        <option value="">Tất cả đánh giá</option>
+                        <option value="4.5">4.5+ sao</option>
+                        <option value="4.0">4.0+ sao</option>
+                        <option value="3.5">3.5+ sao</option>
+                    </select>
+                    <select id="categoryFilter" class="filter-select">
+                        <option value="">Tất cả danh mục</option>
+                        <option value="web-development">Phát triển Web</option>
+                        <option value="design">Thiết kế</option>
+                        <option value="branding">Thương hiệu</option>
+                        <option value="mobile">Di động</option>
+                    </select>
+                    <select id="badgeFilter" class="filter-select">
+                        <option value="">Tất cả danh hiệu</option>
+                        <option value="Top Rated">Top Rated</option>
+                        <option value="Fast Response">Phản hồi nhanh</option>
+                        <option value="Premium">Premium</option>
+                    </select>
+                    <select id="experienceFilter" class="filter-select">
+                        <option value="">Mức kinh nghiệm</option>
+                        <option value="junior">Junior</option>
+                        <option value="mid">Mid</option>
+                        <option value="senior">Senior</option>
+                    </select>
+                    <input type="text" id="locationFilter" class="filter-input" placeholder="Vị trí">
+                </div>
+            </div>
+        </section>
+
+        <section class="featured-freelancers">
+            <div class="container">
+                <h2 class="section-title">Danh sách Freelancer</h2>
+                <div class="freelancer-grid" id="freelancerGrid">
+                    <!-- Freelancer cards will be loaded here -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/search.js"></script>
+    <script src="js/main.js"></script>
+    <script>
+        async function performSearch() {
+            const query = document.getElementById('searchInput').value;
+            const skill = document.getElementById('skillFilter').value;
+            const rating = document.getElementById('ratingFilter').value;
+            const category = document.getElementById('categoryFilter').value;
+            const badge = document.getElementById('badgeFilter').value;
+            const experience = document.getElementById('experienceFilter').value;
+            const location = document.getElementById('locationFilter').value;
+            
+            const filters = {};
+            if (skill) filters.skills = skill;
+            if (rating) filters.rating = parseFloat(rating);
+            if (category) filters.categories = category;
+            if (badge) filters.badges = badge;
+            if (experience) filters.experience_level = experience;
+            if (location) filters.location = location;
+            
+            const freelancers = await searchFreelancers(query, filters);
+            const grid = document.getElementById('freelancerGrid');
+            if (!freelancers.length) {
+                grid.innerHTML = '<div class="freelancer-empty"><i class="fas fa-user-slash"></i><strong>Không tìm thấy freelancer phù hợp</strong><span>Hãy thử điều chỉnh bộ lọc hoặc thay đổi từ khóa để khám phá thêm nhân sự.</span></div>';
+            } else {
+                // Load favorites to show favorite status
+                const favorites = await loadFavorites();
+                grid.innerHTML = freelancers.map(f => {
+                    const isFav = isFavorited(f.user_id, favorites);
+                    return createFreelancerCard(f, isFav);
+                }).join('');
+            }
+        }
+
+        // Debounce function to delay search
+        let searchTimeout;
+        function debounceSearch(func, delay = 500) {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(func, delay);
+        }
+
+        // Auto-search when typing in search input
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('searchInput');
+            const locationInput = document.getElementById('locationFilter');
+            const skillFilter = document.getElementById('skillFilter');
+            const ratingFilter = document.getElementById('ratingFilter');
+            const categoryFilter = document.getElementById('categoryFilter');
+            const badgeFilter = document.getElementById('badgeFilter');
+            const experienceFilter = document.getElementById('experienceFilter');
+
+            // Auto-search on input (with debounce)
+            if (searchInput) {
+                searchInput.addEventListener('input', function() {
+                    debounceSearch(performSearch);
+                });
+            }
+
+            // Auto-search on location input (with debounce)
+            if (locationInput) {
+                locationInput.addEventListener('input', function() {
+                    debounceSearch(performSearch);
+                });
+            }
+
+            // Auto-search on filter change (immediate)
+            [skillFilter, ratingFilter, categoryFilter, badgeFilter, experienceFilter].forEach(filter => {
+                if (filter) {
+                    filter.addEventListener('change', performSearch);
+                }
+            });
+        });
+
+        // Load on page load
+        window.addEventListener('DOMContentLoaded', async () => {
+            const params = new URLSearchParams(window.location.search);
+            const initialQuery = params.get('q') || '';
+            document.getElementById('searchInput').value = initialQuery;
+            const initialFilters = {};
+            if (params.get('skills')) {
+                initialFilters.skills = params.get('skills');
+                document.getElementById('skillFilter').value = params.get('skills');
+            }
+            if (params.get('rating')) {
+                initialFilters.rating = parseFloat(params.get('rating'));
+                document.getElementById('ratingFilter').value = params.get('rating');
+            }
+            if (params.get('categories')) {
+                initialFilters.categories = params.get('categories');
+                document.getElementById('categoryFilter').value = params.get('categories');
+            }
+            if (params.get('badges')) {
+                initialFilters.badges = params.get('badges');
+                document.getElementById('badgeFilter').value = params.get('badges');
+            }
+            if (params.get('experience_level')) {
+                initialFilters.experience_level = params.get('experience_level');
+                document.getElementById('experienceFilter').value = params.get('experience_level');
+            }
+            if (params.get('location')) {
+                initialFilters.location = params.get('location');
+                document.getElementById('locationFilter').value = params.get('location');
+            }
+
+            const freelancers = await searchFreelancers(initialQuery, initialFilters);
+            const grid = document.getElementById('freelancerGrid');
+            if (!freelancers.length) {
+                grid.innerHTML = '<div class="freelancer-empty"><i class="fas fa-user-slash"></i><strong>Không tìm thấy freelancer phù hợp</strong><span>Hãy thử điều chỉnh bộ lọc hoặc thay đổi từ khóa để khám phá thêm nhân sự.</span></div>';
+            } else {
+                // Load favorites to show favorite status
+                const favorites = await loadFavorites();
+                grid.innerHTML = freelancers.map(f => {
+                    const isFav = isFavorited(f.user_id, favorites);
+                    return createFreelancerCard(f, isFav);
+                }).join('');
+            }
+        });
+    </script>
+</body>
+</html>
+
