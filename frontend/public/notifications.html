@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thông báo - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .notifications-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        .notification-item {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            gap: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .notification-item:hover {
+            background-color: var(--bg-gray);
+        }
+        .notification-item.unread {
+            background-color: #f0f4ff;
+            border-left: 3px solid var(--primary-color);
+        }
+        .notification-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .notification-icon.bid_received {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .notification-icon.service_purchased {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        .notification-icon.project_completed {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+        .notification-icon.chat_message {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            color: white;
+        }
+        .notification-content {
+            flex: 1;
+        }
+        .notification-title {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            color: var(--text-primary);
+        }
+        .notification-message {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        .notification-time {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+        .notification-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main class="page-container">
+        <header class="page-header">
+            <div class="notifications-header">
+                <div>
+                    <h1>Thông báo</h1>
+                    <p>Theo dõi các cập nhật quan trọng về dự án, thanh toán và tin nhắn.</p>
+                </div>
+                <button class="btn btn-secondary" id="markAllReadBtn" style="display: none;">
+                    <i class="fas fa-check-double"></i> Đánh dấu tất cả đã đọc
+                </button>
+            </div>
+        </header>
+
+        <section class="card">
+            <div id="notificationsList">
+                <div class="empty-state">
+                    <i class="fas fa-bell"></i>
+                    <h3>Chưa có thông báo</h3>
+                    <p>Bạn sẽ nhận thông báo tại đây khi có hoạt động liên quan đến tài khoản của mình.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/notifications.js"></script>
+    <script>
+        // Mark notifications as viewed when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            localStorage.setItem('lastViewedNotifications', new Date().toISOString());
+            // Update badge immediately
+            if (typeof updateNotificationBadge === 'function') {
+                updateNotificationBadge();
+            }
+        });
+    </script>
+</body>
+</html>

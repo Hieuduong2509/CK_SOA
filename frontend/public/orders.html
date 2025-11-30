@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản lý Dự án - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main class="page-container">
+        <header class="page-header">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <h1>Quản lý Dự án</h1>
+                    <p>Theo dõi các dự án bạn đã đăng hoặc tham gia.</p>
+                </div>
+                <a id="postProjectBtn" href="post_project.html" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <i class="fas fa-plus"></i> Đăng dự án mới
+                </a>
+            </div>
+        </header>
+
+        <section class="card orders-wrapper">
+            <div id="clientOrderFilters" class="orders-filter-group" style="display: none;">
+                <button class="filter-btn active" data-filter="posted">
+                    <i class="fas fa-bullhorn"></i> Dự án tôi đăng
+                </button>
+                <button class="filter-btn" data-filter="purchased">
+                    <i class="fas fa-receipt"></i> Đơn dịch vụ tôi mua
+                </button>
+                <button class="filter-btn" data-filter="completed">
+                    <i class="fas fa-check-circle"></i> Đơn đã hoàn tất
+                </button>
+            </div>
+            <div class="orders-tab-header">
+                <button class="orders-tab-btn active" data-tab="bidding">
+                    <i class="fas fa-users"></i> Dự án đấu thầu
+                </button>
+                <button class="orders-tab-btn" data-tab="gig">
+                    <i class="fas fa-box-open"></i> Đơn hàng dịch vụ
+                </button>
+            </div>
+
+            <div id="ordersTabBidding" class="orders-tab-panel active">
+                <div class="gig-orders-wrapper">
+                    <section class="gig-section">
+                        <header class="gig-section-header">
+                            <div>
+                                <h3>Đang xử lý</h3>
+                                <p class="text-muted">Các dự án bạn đã đăng và đang trong quá trình thực hiện</p>
+                            </div>
+                        </header>
+                        <div id="biddingActiveList" class="orders-grid">
+                            <p class="text-muted">Đang tải dữ liệu...</p>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <div id="ordersTabGig" class="orders-tab-panel">
+                <div class="gig-orders-wrapper">
+                    <section class="gig-section">
+                        <header class="gig-section-header">
+                            <div>
+                                <h3>Đang xử lý</h3>
+                                <p class="text-muted">Các đơn hàng dịch vụ đang trong quá trình thực hiện</p>
+                            </div>
+                        </header>
+                        <div id="gigActiveList" class="orders-grid">
+                            <p class="text-muted">Đang tải dữ liệu...</p>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <section id="completedOrdersSection" class="gig-orders-wrapper" style="margin-top: 2rem; display: none;">
+                <section class="gig-section">
+                    <header class="gig-section-header">
+                        <div>
+                            <h3>Dự án đã hoàn tất</h3>
+                            <p class="text-muted">Tất cả dự án đấu thầu bạn đã đăng và đã hoàn thành</p>
+                        </div>
+                    </header>
+                    <div id="completedBiddingList" class="orders-grid">
+                        <p class="text-muted">Chưa có dự án nào đã hoàn tất.</p>
+                    </div>
+                </section>
+                <section class="gig-section">
+                    <header class="gig-section-header">
+                        <div>
+                            <h3>Đơn dịch vụ đã hoàn tất</h3>
+                            <p class="text-muted">Tất cả đơn hàng dịch vụ bạn đã mua và đã hoàn thành</p>
+                        </div>
+                    </header>
+                    <div id="completedGigList" class="orders-grid">
+                        <p class="text-muted">Chưa có đơn dịch vụ nào đã hoàn tất.</p>
+                    </div>
+                </section>
+            </section>
+        </section>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/orders.js"></script>
+</body>
+</html>

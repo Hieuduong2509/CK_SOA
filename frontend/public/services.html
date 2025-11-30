@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chợ dịch vụ - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main class="services-page">
+        <section class="services-hero">
+            <div class="container">
+                <div class="hero-content">
+                    <div>
+                        <p class="eyebrow">Mini-Fiverr cho Dev & Design</p>
+                        <h1>Tìm & đặt dịch vụ trong vài phút</h1>
+                        <p class="subtitle">
+                            Lựa chọn các gói thiết kế và phát triển đã đóng gói sẵn. Xem portfolio, trao đổi nhanh và đặt đơn trực tiếp.
+                        </p>
+                    </div>
+                    <div class="hero-search">
+                        <i class="fas fa-search"></i>
+                        <input id="serviceSearchInput" type="text" placeholder="Nhập từ khóa: thiết kế logo, landing page...">
+                        <button id="serviceSearchButton" class="btn btn-primary">
+                            Tìm dịch vụ
+                        </button>
+                    </div>
+                    <div class="category-pills" id="categoryPills">
+                        <!-- Pills populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="services-content">
+            <div class="container services-layout">
+                <aside class="services-filter-panel">
+                    <div class="filter-group">
+                        <label for="serviceCategorySelect">Danh mục</label>
+                        <select id="serviceCategorySelect">
+                            <option value="">Tất cả danh mục</option>
+                            <option value="web-development">Web Development</option>
+                            <option value="mobile-app">Mobile App</option>
+                            <option value="ui-ux">UI/UX Design</option>
+                            <option value="branding">Branding</option>
+                            <option value="product-design">Product Design</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group double">
+                        <div>
+                            <label for="minPriceInput">Giá từ</label>
+                            <input type="number" id="minPriceInput" placeholder="VNĐ">
+                        </div>
+                        <div>
+                            <label for="maxPriceInput">Đến</label>
+                            <input type="number" id="maxPriceInput" placeholder="VNĐ">
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="deliveryFilter">Thời gian giao hàng</label>
+                        <select id="deliveryFilter">
+                            <option value="">Tất cả</option>
+                            <option value="3">3 ngày</option>
+                            <option value="7">7 ngày</option>
+                            <option value="14">14 ngày</option>
+                            <option value="30">30 ngày</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="ratingFilter">Đánh giá tối thiểu</label>
+                        <select id="ratingFilter">
+                            <option value="">Không lọc</option>
+                            <option value="4.5">4.5+ sao</option>
+                            <option value="4.0">4.0+ sao</option>
+                            <option value="3.5">3.5+ sao</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="tagInput">Thẻ kỹ năng</label>
+                        <input type="text" id="tagInput" placeholder="Ví dụ: react, figma">
+                        <small>Nhập nhiều thẻ, phân tách bằng dấu phẩy</small>
+                    </div>
+
+                    <button id="clearFiltersBtn" class="btn btn-secondary btn-ghost">
+                        <i class="fas fa-undo"></i> Xóa bộ lọc
+                    </button>
+                </aside>
+
+                <section class="services-results">
+                    <div class="services-result-header">
+                        <h2><i class="fas fa-box-open"></i> Gói dịch vụ nổi bật</h2>
+                        <div class="result-actions">
+                            <select id="sortSelect">
+                                <option value="recent">Mới nhất</option>
+                                <option value="price_asc">Giá thấp đến cao</option>
+                                <option value="price_desc">Giá cao đến thấp</option>
+                                <option value="rating">Được đánh giá cao</option>
+                                <option value="fastest">Giao nhanh nhất</option>
+                            </select>
+                            <span id="servicesCount" class="result-count">0 gói</span>
+                        </div>
+                    </div>
+                    <div id="servicesGrid" class="service-market-grid">
+                        <div class="empty-state">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Đang tải các gói dịch vụ...</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </section>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/service_order.js"></script>
+    <script src="js/services.js"></script>
+</body>
+</html>
+

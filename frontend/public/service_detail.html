@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chi tiết dịch vụ - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main class="service-detail-page">
+        <div class="container">
+            <section class="service-hero-card">
+                <div class="service-hero-media">
+                    <div id="serviceGallery" class="service-gallery">
+                        <div class="empty-state">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Đang tải hình ảnh...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="service-hero-summary">
+                    <p class="service-category" id="serviceCategory">Danh mục • Dev & Design</p>
+                    <h1 id="serviceTitle">Đang tải dịch vụ...</h1>
+                    <p class="service-subtitle" id="serviceSubtitle"></p>
+                    <div class="service-meta-row" id="serviceMetaRow">
+                        <!-- filled by JS -->
+                    </div>
+                    <div class="service-price-panel">
+                        <div>
+                            <small>Giá chỉ từ</small>
+                            <strong id="servicePrice">--</strong>
+                            <span class="service-rating" id="serviceRating"><i class="fas fa-star"></i> --</span>
+                        </div>
+                        <div class="service-hero-actions">
+                            <button id="contactBtn" class="btn btn-light">
+                                <i class="fas fa-message"></i> Liên hệ
+                            </button>
+                            <button id="orderBtn" class="btn btn-primary">
+                                <i class="fas fa-cart-plus"></i> Đặt dịch vụ
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="service-content-layout">
+                <article class="service-main-content">
+                    <section class="service-section">
+                        <h2>Chi tiết gói dịch vụ</h2>
+                        <div id="serviceDescription"></div>
+                        <div class="deliverables-list" id="deliverablesList"></div>
+                    </section>
+
+                    <section class="service-section" id="faqSection" style="display: none;">
+                        <div class="section-header">
+                            <h2>Câu hỏi thường gặp</h2>
+                        </div>
+                        <div id="faqList" class="faq-list"></div>
+                    </section>
+
+                    <section class="service-section" id="requirementsSection" style="display: none;">
+                        <div class="section-header">
+                            <h2>Yêu cầu khách hàng cần chuẩn bị</h2>
+                        </div>
+                        <ul id="requirementsList" class="requirements-list"></ul>
+                    </section>
+                </article>
+
+                <aside class="service-side-panel">
+                    <section class="freelancer-card" id="freelancerCard">
+                        <div class="freelancer-header">
+                            <img id="freelancerAvatar" alt="Avatar freelancer">
+                            <div>
+                                <h3 id="freelancerName">Đang tải...</h3>
+                                <p id="freelancerHeadline"></p>
+                                <span id="freelancerRating" class="rating-chip"><i class="fas fa-star"></i> --</span>
+                            </div>
+                        </div>
+                        <div class="freelancer-meta" id="freelancerMeta"></div>
+                        <a id="freelancerProfileLink" class="btn btn-secondary" href="#">
+                            <i class="fas fa-user"></i> Xem hồ sơ
+                        </a>
+                    </section>
+
+                    <section class="more-services-card" id="relatedServices">
+                        <div class="section-header">
+                            <h3>Dịch vụ khác từ freelancer</h3>
+                        </div>
+                        <div id="relatedServicesList" class="related-list">
+                            <div class="empty-state small">
+                                <p>Đang tải...</p>
+                            </div>
+                        </div>
+                    </section>
+                </aside>
+            </section>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/service_order.js"></script>
+    <script src="js/service_detail.js"></script>
+</body>
+</html>
+

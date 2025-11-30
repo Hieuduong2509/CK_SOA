@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đơn hàng của tôi - Freelancer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main class="page-container">
+        <header class="page-header">
+            <h1>Đơn hàng của tôi</h1>
+            <p>Theo dõi các dự án đã được nhận và các dự án đang chờ khách hàng duyệt.</p>
+        </header>
+
+        <section class="order-section">
+            <div class="order-section-header">
+                <h2><i class="fas fa-circle-check text-success"></i> Đang tham gia</h2>
+                <span id="activeCount" class="order-count">0 đơn hàng</span>
+            </div>
+            <div id="activeOrders" class="order-grid">
+                <div class="empty-state">
+                    <i class="fas fa-clipboard-check"></i>
+                    <p>Chưa có đơn hàng nào được giao.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="order-section">
+            <div class="order-section-header">
+                <h2><i class="fas fa-hourglass-half text-warning"></i> Chờ khách hàng duyệt</h2>
+                <span id="pendingCount" class="order-count">0 đơn hàng</span>
+            </div>
+            <div id="pendingOrders" class="order-grid">
+                <div class="empty-state">
+                    <i class="fas fa-inbox"></i>
+                    <p>Chưa có đơn hàng apply nào đang chờ duyệt.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/order_freelancer.js"></script>
+</body>
+</html>
+

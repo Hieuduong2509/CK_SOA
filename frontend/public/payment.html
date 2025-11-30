@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thanh toán - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main>
+        <div class="container" style="max-width: 900px; padding: 2rem 0;">
+            <h1 style="text-align: center; margin-bottom: 2rem;">Thanh toán</h1>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                <!-- Thông tin đơn hàng -->
+                <div class="card">
+                    <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Thông tin đơn hàng</h2>
+                    <div id="orderSummary">
+                        <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md); margin-bottom: 1rem;">
+                            <p style="font-weight: 600; margin-bottom: 0.5rem;">Freelancer</p>
+                            <p id="freelancerName" style="color: var(--text-secondary);">Đang tải...</p>
+                        </div>
+                        <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md); margin-bottom: 1rem;">
+                            <p style="font-weight: 600; margin-bottom: 0.5rem;">Gói dịch vụ</p>
+                            <p id="packageName" style="color: var(--text-secondary);">Đang tải...</p>
+                        </div>
+                        <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md);">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                <span>Tạm tính:</span>
+                                <span id="subtotal">$0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                <span>Phí dịch vụ:</span>
+                                <span id="serviceFee">$0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding-top: 1rem; border-top: 1px solid var(--border-color); font-weight: 600; font-size: 1.1rem;">
+                                <span>Tổng cộng:</span>
+                                <span id="total" style="color: var(--primary-color);">$0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Thông tin thanh toán -->
+                <div class="card">
+                    <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Thông tin thanh toán</h2>
+                    <form id="paymentForm">
+                        <div class="form-group">
+                            <label for="paymentMethod">Phương thức thanh toán</label>
+                            <select id="paymentMethod" name="paymentMethod" required>
+                                <option value="credit_card" selected>Thẻ tín dụng/Ghi nợ</option>
+                                <option value="bank_transfer">Chuyển khoản ngân hàng</option>
+                                <option value="e_wallet">Ví điện tử</option>
+                            </select>
+                        </div>
+
+                        <div id="creditCardFields" style="display: block;">
+                            <div class="form-group">
+                                <label for="cardNumber">Số thẻ <span style="color: var(--danger-color);">*</span></label>
+                                <input type="text" id="cardNumber" name="cardNumber" placeholder="1234 5678 9012 3456" maxlength="19" required>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label for="expiryDate">Ngày hết hạn <span style="color: var(--danger-color);">*</span></label>
+                                    <input type="text" id="expiryDate" name="expiryDate" placeholder="MM/YY" maxlength="5" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cvv">CVV <span style="color: var(--danger-color);">*</span></label>
+                                    <input type="text" id="cvv" name="cvv" placeholder="123" maxlength="3" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="cardholderName">Tên chủ thẻ <span style="color: var(--danger-color);">*</span></label>
+                                <input type="text" id="cardholderName" name="cardholderName" placeholder="NGUYEN VAN A" required>
+                            </div>
+                        </div>
+
+                        <div id="bankTransferFields" style="display: none;">
+                            <div class="form-group">
+                                <label>Thông tin chuyển khoản</label>
+                                <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md);">
+                                    <p><strong>Ngân hàng:</strong> Techcombank</p>
+                                    <p><strong>Số tài khoản:</strong> 1234567890</p>
+                                    <p><strong>Chủ tài khoản:</strong> CodeDesign Marketplace</p>
+                                    <p><strong>Nội dung:</strong> <span id="transferContent">PAY-XXXXXX</span></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="eWalletFields" style="display: none;">
+                            <div class="form-group">
+                                <label for="eWalletType">Loại ví điện tử</label>
+                                <select id="eWalletType" name="eWalletType">
+                                    <option value="">Chọn ví</option>
+                                    <option value="momo">MoMo</option>
+                                    <option value="zalo_pay">ZaloPay</option>
+                                    <option value="vnpay">VNPay</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                            <i class="fas fa-lock"></i> Xác nhận thanh toán
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card" style="background: #FEF3C7; border: 1px solid #FCD34D;">
+                <p style="margin: 0; color: #92400E;">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>Lưu ý:</strong> Thanh toán của bạn sẽ được giữ an toàn trong hệ thống và chỉ được chuyển cho freelancer sau khi dự án hoàn thành.
+                </p>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script>
+        // API_BASE is defined in config.js
+        var API_BASE = window.API_BASE || window.location.origin;
+        
+        // Get parameters from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const serviceId = urlParams.get('service_id');
+        const projectId = urlParams.get('project_id'); // For bid payment
+        const bidId = urlParams.get('bid_id'); // For bid payment
+        const freelancerId = urlParams.get('freelancer_id'); // Legacy support
+        const packageId = urlParams.get('package_id'); // Legacy support
+
+        const paymentMethodSelect = document.getElementById('paymentMethod');
+        const creditCardFields = document.getElementById('creditCardFields');
+        const cardInputs = ['cardNumber', 'expiryDate', 'cvv', 'cardholderName'].map(id => document.getElementById(id));
+
+        function togglePaymentFields(method) {
+            const showCredit = method === 'credit_card';
+            creditCardFields.style.display = showCredit ? 'block' : 'none';
+            document.getElementById('bankTransferFields').style.display = method === 'bank_transfer' ? 'block' : 'none';
+            document.getElementById('eWalletFields').style.display = method === 'e_wallet' ? 'block' : 'none';
+
+            cardInputs.forEach(input => {
+                if (!input) return;
+                input.disabled = !showCredit;
+                input.required = showCredit;
+                if (!showCredit) input.value = '';
+            });
+        }
+
+        // Initial state
+        togglePaymentFields(paymentMethodSelect.value);
+
+        // Show/hide payment method fields
+        paymentMethodSelect.addEventListener('change', function() {
+            togglePaymentFields(this.value);
+        });
+
+        // Format card number
+        document.getElementById('cardNumber')?.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\s/g, '');
+            let formattedValue = value.match(/.{1,4}/g)?.join(' ') || value;
+            e.target.value = formattedValue;
+        });
+
+        // Format expiry date
+        document.getElementById('expiryDate')?.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length >= 2) {
+                value = value.substring(0, 2) + '/' + value.substring(2, 4);
+            }
+            e.target.value = value;
+        });
+
+        // Only allow numbers for CVV
+        document.getElementById('cvv')?.addEventListener('input', function(e) {
+            e.target.value = e.target.value.replace(/\D/g, '');
+        });
+
+        // Calculate price for bid based on budget_type
+        // HOURLY: bid.price (giá mỗi giờ) * số giờ (từ deadline, max 8h/ngày)
+        // FIXED: bid.price (giá mỗi ngày) * số ngày (từ deadline)
+        function calculateBidPrice(bid, project) {
+            const basePrice = bid.price || 0;
+            const budgetType = (project.budget_type || '').toUpperCase();
+            
+            // Calculate days from deadline or use timeline_days from bid
+            let days = bid.timeline_days || 1;
+            if (project.deadline) {
+                const deadline = new Date(project.deadline);
+                const now = new Date();
+                const diffMs = deadline.getTime() - now.getTime();
+                const calculatedDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+                days = calculatedDays;
+            }
+            
+            if (budgetType === 'HOURLY') {
+                // HOURLY: basePrice (giá mỗi giờ) * số giờ (max 8h/ngày)
+                const totalHours = days * 8; // Max 8 hours per day
+                return basePrice * totalHours;
+            } else {
+                // FIXED: basePrice (giá mỗi ngày) * số ngày
+                return basePrice * days;
+            }
+        }
+
+        // Load order summary from API
+        async function loadOrderSummary() {
+            // Priority: project_id + bid_id (bid payment) > service_id (service package) > freelancer_id + package_id (legacy)
+            if (projectId && bidId) {
+                try {
+                    const token = typeof getToken === 'function' ? getToken() : localStorage.getItem('access_token');
+                    if (!token) {
+                        throw new Error('Vui lòng đăng nhập để thanh toán.');
+                    }
+
+                    // Fetch project
+                    const projectRes = await fetch(`${API_BASE}/api/v1/projects/${projectId}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!projectRes.ok) {
+                        throw new Error('Không thể tải thông tin dự án');
+                    }
+                    const project = await projectRes.json();
+
+                    // Fetch bids
+                    const bidsRes = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!bidsRes.ok) {
+                        throw new Error('Không thể tải thông tin đề xuất');
+                    }
+                    const bids = await bidsRes.json();
+                    const bid = bids.find(b => b.id === parseInt(bidId));
+                    if (!bid) {
+                        throw new Error('Không tìm thấy đề xuất đã chọn');
+                    }
+
+                    // Fetch freelancer profile
+                    const freelancerRes = await fetch(`${API_BASE}/api/v1/users/${bid.freelancer_id}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const freelancer = freelancerRes.ok ? await freelancerRes.json() : null;
+
+                    // Display freelancer info
+                    document.getElementById('freelancerName').textContent = 
+                        (freelancer && (freelancer.display_name || freelancer.name)) || `Freelancer #${bid.freelancer_id}`;
+                    
+                    // Display project info
+                    document.getElementById('packageName').innerHTML = `
+                        <strong>${project.title}</strong><br>
+                        <span style="color: var(--text-secondary); font-size: 0.9rem;">${project.description || ''}</span>
+                    `;
+
+                    // Calculate pricing based on budget_type
+                    const subtotal = calculateBidPrice(bid, project);
+                    const serviceFee = subtotal * 0.1; // 10% service fee
+                    const total = subtotal + serviceFee;
+
+                    document.getElementById('subtotal').textContent = formatCurrency(subtotal);
+                    document.getElementById('serviceFee').textContent = formatCurrency(serviceFee);
+                    document.getElementById('total').textContent = formatCurrency(total);
+                    
+                    // Generate transfer content
+                    const transferContent = `PAY-${Date.now().toString().slice(-6)}`;
+                    document.getElementById('transferContent').textContent = transferContent;
+
+                    // Store bid data for payment submission
+                    window.currentBidData = { project, bid, freelancer };
+                    return;
+                } catch (error) {
+                    console.error('Error loading bid order:', error);
+                    document.getElementById('freelancerName').textContent = 'Lỗi: ' + error.message;
+                    document.getElementById('packageName').textContent = 'Không thể tải thông tin';
+                    return;
+                }
+            }
+            
+            if (serviceId) {
+                try {
+                    const serviceRes = await fetch(`${API_BASE}/api/v1/services/${serviceId}`);
+                    if (!serviceRes.ok) {
+                        throw new Error('Không thể tải thông tin gói dịch vụ');
+                    }
+                    const service = await serviceRes.json();
+                    const profile = service.profile || {};
+
+                    // Display freelancer info
+                    document.getElementById('freelancerName').textContent = profile.display_name || profile.name || 'Freelancer';
+                    
+                    // Display package info
+                    document.getElementById('packageName').innerHTML = `
+                        <strong>${service.name}</strong><br>
+                        <span style="color: var(--text-secondary); font-size: 0.9rem;">${service.description || ''}</span>
+                    `;
+
+                    // Calculate pricing
+                    const subtotal = service.price || 0;
+                    const serviceFee = subtotal * 0.1; // 10% service fee (platform commission)
+                    const total = subtotal + serviceFee;
+
+                    document.getElementById('subtotal').textContent = formatCurrency(subtotal);
+                    document.getElementById('serviceFee').textContent = formatCurrency(serviceFee);
+                    document.getElementById('total').textContent = formatCurrency(total);
+                    
+                    // Show escrow notice
+                    const orderSummary = document.getElementById('orderSummary');
+                    if (orderSummary && !orderSummary.querySelector('.escrow-notice')) {
+                        const notice = document.createElement('div');
+                        notice.className = 'escrow-notice';
+                        notice.style.cssText = 'margin-top: 0.75rem; padding: 0.75rem; background: #f0f4ff; border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-secondary);';
+                        notice.innerHTML = '<i class="fas fa-info-circle"></i> Tiền sẽ được giữ trong escrow và chỉ chuyển cho freelancer khi bạn chấp nhận công việc hoàn thành.';
+                        orderSummary.appendChild(notice);
+                    }
+                    
+                    // Generate transfer content
+                    const transferContent = `PAY-${Date.now().toString().slice(-6)}`;
+                    document.getElementById('transferContent').textContent = transferContent;
+
+                    // Store service data for payment submission
+                    window.currentServiceData = service;
+                    return;
+                } catch (error) {
+                    console.error('Error loading service:', error);
+                    document.getElementById('freelancerName').textContent = 'Lỗi: ' + error.message;
+                    document.getElementById('packageName').textContent = 'Không thể tải thông tin';
+                    return;
+                }
+            }
+
+            // Legacy flow: freelancer_id + package_id
+            if (!freelancerId || !packageId) {
+                document.getElementById('freelancerName').textContent = 'Chưa chọn freelancer hoặc gói dịch vụ';
+                document.getElementById('packageName').textContent = 'Vui lòng quay lại và chọn gói dịch vụ';
+                return;
+            }
+
+            try {
+                // Load freelancer profile
+                const profileRes = await fetch(`${API_BASE}/api/v1/users/${freelancerId}`);
+                if (!profileRes.ok) {
+                    throw new Error('Không thể tải thông tin freelancer');
+                }
+                const profile = await profileRes.json();
+
+                // Load packages
+                const packagesRes = await fetch(`${API_BASE}/api/v1/users/${freelancerId}/packages`);
+                if (!packagesRes.ok) {
+                    throw new Error('Không thể tải danh sách gói dịch vụ');
+                }
+                const packages = await packagesRes.json();
+                const selectedPackage = packages.find(pkg => pkg.id === parseInt(packageId));
+
+                if (!selectedPackage) {
+                    throw new Error('Không tìm thấy gói dịch vụ đã chọn');
+                }
+
+                // Display freelancer info
+                document.getElementById('freelancerName').textContent = profile.display_name || profile.name || 'Freelancer';
+                
+                // Display package info
+                document.getElementById('packageName').innerHTML = `
+                    <strong>${selectedPackage.name}</strong><br>
+                    <span style="color: var(--text-secondary); font-size: 0.9rem;">${selectedPackage.description || ''}</span>
+                `;
+
+                // Calculate pricing
+                const subtotal = selectedPackage.price || 0;
+                const serviceFee = subtotal * 0.1; // 10% service fee
+                const total = subtotal + serviceFee;
+
+                document.getElementById('subtotal').textContent = formatCurrency(subtotal);
+                document.getElementById('serviceFee').textContent = formatCurrency(serviceFee);
+                document.getElementById('total').textContent = formatCurrency(total);
+                
+                // Generate transfer content
+                const transferContent = `PAY-${Date.now().toString().slice(-6)}`;
+                document.getElementById('transferContent').textContent = transferContent;
+
+            } catch (error) {
+                console.error('Error loading order summary:', error);
+                document.getElementById('freelancerName').textContent = 'Lỗi: ' + error.message;
+                document.getElementById('packageName').textContent = 'Không thể tải thông tin';
+            }
+        }
+
+        // Format currency helper
+        function formatCurrency(value) {
+            if (!value) return '0 nghìn đồng';
+            const thousands = value / 1000;
+            return new Intl.NumberFormat('vi-VN', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(thousands) + ' nghìn đồng';
+        }
+
+        // Handle form submission
+        document.getElementById('paymentForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const token = typeof getToken === 'function' ? getToken() : null;
+            if (!token) {
+                alert('Vui lòng đăng nhập để thanh toán.');
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // Disable submit button
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xử lý...';
+
+            try {
+                // Demo: Tất cả phương thức thanh toán đều thành công
+                await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate processing
+
+                if (projectId && bidId && window.currentBidData) {
+                    // Bid payment flow: Accept bid after payment
+                    const { project, bid } = window.currentBidData;
+                    
+                    // Accept the bid
+                    const acceptResponse = await fetch(`${API_BASE}/api/v1/projects/${projectId}/accept`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ bid_id: parseInt(bidId) })
+                    });
+
+                    if (!acceptResponse.ok) {
+                        const error = await acceptResponse.json().catch(() => ({}));
+                        throw new Error(error.detail || 'Không thể duyệt đề xuất.');
+                    }
+
+                    const updatedProject = await acceptResponse.json();
+                    alert('Thanh toán thành công! Đề xuất đã được duyệt. Bạn sẽ được chuyển đến workspace.');
+                    window.location.href = `workspace.html?project_id=${projectId}`;
+                } else if (serviceId && window.currentServiceData) {
+                    // Get requirements_answers from sessionStorage (set by service_checkout.js)
+                    let requirementsAnswers = [];
+                    try {
+                        const stored = sessionStorage.getItem('service_requirements_answers');
+                        if (stored) {
+                            requirementsAnswers = JSON.parse(stored);
+                            sessionStorage.removeItem('service_requirements_answers'); // Clean up
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse requirements_answers:', e);
+                    }
+
+                    // Step 1: Create project from service
+                    const createProjectResponse = await fetch(`${API_BASE}/api/v1/projects/create-from-service`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            service_id: parseInt(serviceId),
+                            requirements_answers: requirementsAnswers
+                        })
+                    });
+
+                    if (!createProjectResponse.ok) {
+                        const error = await createProjectResponse.json().catch(() => ({}));
+                        throw new Error(error.detail || 'Không thể tạo đơn hàng.');
+                    }
+
+                    const project = await createProjectResponse.json();
+                    
+                    // Step 2: Create escrow deposit (payment is held by platform)
+                    // Find the milestone that was auto-created
+                    const milestonesResponse = await fetch(`${API_BASE}/api/v1/projects/${project.id}/milestones`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    let milestoneId = null;
+                    if (milestonesResponse.ok) {
+                        const milestones = await milestonesResponse.json();
+                        if (milestones && milestones.length > 0) {
+                            milestoneId = milestones[0].id;
+                        }
+                    }
+                    
+                    if (milestoneId) {
+                        try {
+                            const escrowResponse = await fetch(`${API_BASE}/api/v1/payments/escrow/deposit`, {
+                                method: 'POST',
+                                headers: {
+                                    'Authorization': `Bearer ${token}`,
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    project_id: project.id,
+                                    milestone_id: milestoneId,
+                                    amount: window.currentServiceData.price || 0,
+                                    from_wallet: false // Direct payment, not from wallet
+                                })
+                            });
+                            
+                            if (!escrowResponse.ok) {
+                                const escrowError = await escrowResponse.json().catch(() => ({}));
+                                console.warn('Escrow deposit warning:', escrowError);
+                                // Continue anyway - escrow might already exist or will be created later
+                            }
+                        } catch (escrowError) {
+                            console.warn('Failed to create escrow:', escrowError);
+                            // Continue anyway - project is created, escrow can be handled later
+                        }
+                    }
+                    
+                    alert('Thanh toán thành công! Tiền đã được giữ trong escrow. Đơn hàng đã được tạo. Bạn sẽ được chuyển đến workspace.');
+                    window.location.href = `workspace.html?project_id=${project.id}`;
+                } else if (freelancerId && packageId) {
+                    // Legacy flow: Handle old payment flow if needed
+                    alert('Thanh toán thành công! (Legacy flow - cần cập nhật)');
+                    window.location.href = 'orders.html';
+                } else {
+                    throw new Error('Thiếu thông tin đơn hàng.');
+                }
+            } catch (error) {
+                console.error('Payment error:', error);
+                alert('Lỗi: ' + (error.message || 'Không thể hoàn tất thanh toán.'));
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            }
+        });
+
+        // Load order summary on page load
+        loadOrderSummary();
+    </script>
+</body>
+</html>
+
