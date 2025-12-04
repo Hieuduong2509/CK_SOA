@@ -27,6 +27,7 @@ class PaymentMethod(str, enum.Enum):
     VNPAY = "vnpay"
     BANK_TRANSFER = "bank_transfer"
     PAYPAL = "paypal"
+    ZALOPAY = "zalopay"
 
 
 class Wallet(Base):

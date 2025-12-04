@@ -23,6 +23,10 @@
                     <i class="fas fa-clipboard-check"></i>
                     Duyệt bài đăng
                 </button>
+                <button class="admin-nav-btn" data-panel="services">
+                    <i class="fas fa-box-open"></i>
+                    Duyệt gói dịch vụ
+                </button>
                 <button class="admin-nav-btn" data-panel="users">
                     <i class="fas fa-user-check"></i>
                     Tài khoản
@@ -30,10 +34,6 @@
                 <button class="admin-nav-btn" data-panel="disputes">
                     <i class="fas fa-gavel"></i>
                     Khiếu nại & Escrow
-                </button>
-                <button class="admin-nav-btn" data-panel="analytics">
-                    <i class="fas fa-chart-line"></i>
-                    Thống kê
                 </button>
             </nav>
         </aside>
@@ -89,6 +89,36 @@
                     </div>
                 </section>
 
+                <!-- Panel: Service Approval -->
+                <section id="admin-panel-services" class="admin-panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>Duyệt gói dịch vụ</h2>
+                            <p>Kiểm duyệt các gói freelancer đăng tải trước khi hiển thị</p>
+                        </div>
+                        <button class="btn btn-secondary btn-small" id="refreshServicesBtn">
+                            <i class="fas fa-rotate"></i> Làm mới
+                        </button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Thông tin gói</th>
+                                    <th>Giá</th>
+                                    <th>Freelancer</th>
+                                    <th>Ngày tạo</th>
+                                    <th style="width: 200px;">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pendingServicesBody">
+                                <tr><td colspan="6" class="text-muted">Đang tải dữ liệu...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
                 <!-- Panel: User Verification -->
                 <section id="admin-panel-users" class="admin-panel">
                     <div class="panel-header">
@@ -131,39 +161,51 @@
                 <section id="admin-panel-disputes" class="admin-panel">
                     <div class="panel-header">
                         <div>
-                            <h2>Khiếu nại & quyết toán Escrow</h2>
-                            <p>Xem và xử lý các tranh chấp giữa khách hàng và freelancer</p>
+                            <h2>Khiếu nại</h2>
+                            <p>Xem chi tiết khiếu nại và đánh giá 1 sao của từng tài khoản</p>
                         </div>
-                        <button class="btn btn-secondary btn-small" id="refreshDisputesBtn">
+                        <button class="btn btn-secondary btn-small" id="refreshComplaintsBtn">
                             <i class="fas fa-rotate"></i> Làm mới
                         </button>
                     </div>
-                    <div id="disputesList" class="card-list">
-                        <div class="empty-state">Đang tải dữ liệu...</div>
-                    </div>
-                </section>
-
-                <!-- Panel: Analytics -->
-                <section id="admin-panel-analytics" class="admin-panel">
-                    <div class="panel-header">
-                        <div>
-                            <h2>Thống kê vận hành</h2>
-                            <p>Tổng quan doanh thu, người dùng và hoạt động trên nền tảng</p>
+                    <div class="admin-manage-grid">
+                        <div class="admin-manage-column">
+                            <header class="column-header">
+                                <h3>Khách hàng</h3>
+                                <p>Tài khoản đăng dự án</p>
+                            </header>
+                            <div id="complaintsClientList" class="card-list">
+                                <div class="empty-state">Đang tải dữ liệu...</div>
+                            </div>
                         </div>
-                        <button class="btn btn-secondary btn-small" id="refreshAnalyticsBtn">
-                            <i class="fas fa-rotate"></i> Làm mới
-                        </button>
-                    </div>
-                    <div id="analyticsGrid" class="analytics-grid">
-                        <!-- Analytics cards render here -->
-                    </div>
-                    <div id="analyticsChartPlaceholder" class="analytics-placeholder">
-                        <p>Biểu đồ phân bổ doanh thu và tăng trưởng sẽ hiển thị tại đây.</p>
+                        <div class="admin-manage-column">
+                            <header class="column-header">
+                                <h3>Freelancer</h3>
+                                <p>Tài khoản thực hiện dự án</p>
+                            </header>
+                            <div id="complaintsFreelancerList" class="card-list">
+                                <div class="empty-state">Đang tải dữ liệu...</div>
+                            </div>
+                        </div>
                     </div>
                 </section>
             </div>
         </section>
     </main>
+
+    <div id="serviceDetailModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h3>Chi tiết gói dịch vụ</h3>
+            <div id="serviceDetailBody" class="service-detail-body">
+                <!-- Filled via JS -->
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeServiceModal()">
+                    <i class="fas fa-times"></i> Đóng
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>

@@ -74,6 +74,10 @@ async function getProject(projectId) {
 
 async function submitBid(projectId, bidData) {
     const token = localStorage.getItem('access_token');
+    if (!token) {
+        throw new Error('Vui lòng đăng nhập để nộp thầu.');
+    }
+
     try {
         const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, {
             method: 'POST',
@@ -86,10 +90,38 @@ async function submitBid(projectId, bidData) {
         
         if (response.ok) {
             return await response.json();
+        } else {
+            let errorMessage = 'Không thể gửi thầu. ';
+            try {
+                const errorData = await response.json();
+                if (errorData && errorData.detail) {
+                    if (typeof errorData.detail === 'string') {
+                        errorMessage = errorData.detail;
+                    } else if (Array.isArray(errorData.detail)) {
+                        const errors = errorData.detail.map(e => {
+                            const field = Array.isArray(e.loc) ? e.loc.slice(1).join('.') : 'unknown';
+                            return `${field}: ${e.msg}`;
+                        });
+                        errorMessage += errors.join('; ');
+                    } else {
+                        errorMessage += JSON.stringify(errorData.detail);
+                    }
+                } else if (errorData && errorData.message) {
+                    errorMessage = errorData.message;
+                } else {
+                    errorMessage += `HTTP ${response.status}: ${response.statusText}`;
+                }
+            } catch (e) {
+                errorMessage += `HTTP ${response.status}: ${response.statusText}`;
+            }
+            throw new Error(errorMessage);
         }
     } catch (error) {
         console.error('Error submitting bid:', error);
+        if (error.message) {
+            throw error;
+        }
+        throw new Error('Lỗi kết nối. Vui lòng thử lại sau.');
     }
-    return null;
 }
 

@@ -1,10 +1,28 @@
 import pika
 import json
+from datetime import datetime
+import os
+import httpx
 from database import SessionLocal
 from models import Event, Metric
-import os
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://admin:admin@localhost:5672/")
+PROJECT_SERVICE_URL = os.getenv("PROJECT_SERVICE_URL", "http://project-service:8000")
+
+
+def resolve_project_type(project_id: int):
+    if not project_id:
+        return None
+    try:
+        response = httpx.get(f"{PROJECT_SERVICE_URL}/api/v1/projects/{project_id}", timeout=5.0)
+        if response.status_code == 200:
+            data = response.json()
+            project_type = data.get("project_type") or data.get("type")
+            if project_type:
+                return str(project_type).lower()
+    except Exception as exc:
+        print(f"resolve_project_type error: {exc}")
+    return None
 
 
 def process_event(ch, method, properties, body):
@@ -15,7 +33,6 @@ def process_event(ch, method, properties, body):
         
         db = SessionLocal()
         try:
-            # Store event
             event = Event(
                 event_type=event_type,
                 user_id=data.get("user_id"),
@@ -23,12 +40,18 @@ def process_event(ch, method, properties, body):
             )
             db.add(event)
             
-            # Update metrics
             if event_type == "escrow.released":
+                project_type = data.get("project_type")
+                if not project_type:
+                    project_type = resolve_project_type(data.get("project_id"))
+                meta = {
+                    "project_type": project_type or "unknown"
+                }
                 metric = Metric(
                     metric_name="revenue",
                     value=data.get("commission_amount", 0),
-                    date=datetime.utcnow()
+                    date=datetime.utcnow(),
+                    meta_data=meta
                 )
                 db.add(metric)
             
@@ -53,6 +76,4 @@ def start_worker():
 
 
 if __name__ == "__main__":
-    from datetime import datetime
     start_worker()
-

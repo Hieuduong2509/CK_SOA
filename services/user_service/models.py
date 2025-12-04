@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKe
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+import enum
 
 Base = declarative_base()
 
@@ -56,6 +57,14 @@ class PortfolioItem(Base):
     profile = relationship("Profile", back_populates="portfolio_items")
 
 
+class PackageStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    HIDDEN = "hidden"
+
+
 class Package(Base):
     __tablename__ = "packages"
 
@@ -68,6 +77,16 @@ class Package(Base):
     revisions = Column(Integer, default=1)
     delivery_days = Column(Integer, nullable=False)
     is_active = Column(Boolean, default=True)
+    status = Column(String, default=PackageStatus.DRAFT.value, nullable=False)
+    cover_image = Column(String, nullable=True)
+    gallery = Column(JSON, default=list)
+    category = Column(String, nullable=True)
+    requirements = Column(JSON, default=list)
+    tags = Column(JSON, default=list)
+    faq = Column(JSON, default=list)
+    rating = Column(Float, default=0.0)
+    total_reviews = Column(Integer, default=0)
+    rejection_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

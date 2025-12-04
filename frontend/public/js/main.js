@@ -18,12 +18,14 @@ async function loadAllFreelancersByCategory() {
 
     try {
         // Load all freelancers (no limit)
-        const response = await fetch(`${API_BASE}/api/v1/users?limit=100`);
+        const response = await fetch(`${API_BASE}/api/v1/users?limit=100&sort=recent`);
         if (!response.ok) {
             throw new Error(`Failed to load freelancers: ${response.status} ${response.statusText}`);
         }
         
         const allFreelancers = await response.json();
+        // Cache all freelancers for filtering
+        allFreelancersCache = allFreelancers;
         console.log('Loaded freelancers:', allFreelancers.length, allFreelancers);
         
         // Load favorites if user is logged in
@@ -174,6 +176,9 @@ function createFreelancerCard(freelancer, isFavorited = false) {
             <div class="freelancer-card-actions">
                 <button class="btn btn-primary btn-small" onclick="event.stopPropagation(); window.location.href='freelancer_profile.html?id=${userId}'">
                     Xem hồ sơ
+                </button>
+                <button class="btn btn-secondary btn-small" onclick="event.stopPropagation(); contactFreelancer(${userId}, '${displayName.replace(/'/g, "\\'")}')">
+                    <i class="fas fa-comment-dots"></i> Nhắn tin
                 </button>
                 ${profileId ? `
                 <button class="btn btn-outline btn-small favorite-btn ${favoriteClass}" 
@@ -399,12 +404,63 @@ async function addFavorite(profileId) {
     await toggleFavorite(profileId, null, null);
 }
 
+// Contact freelancer - start conversation
+async function contactFreelancer(freelancerId, freelancerName) {
+    const token = getToken();
+    if (!token) {
+        alert('Vui lòng đăng nhập để nhắn tin với freelancer.');
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    const currentUser = getCurrentUserProfile() || await fetchCurrentUser();
+    if (!currentUser) {
+        alert('Không thể xác thực người dùng. Vui lòng đăng nhập lại.');
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    // Check if trying to contact yourself
+    if (currentUser.id === freelancerId) {
+        alert('Bạn không thể nhắn tin cho chính mình.');
+        return;
+    }
+    
+    try {
+        // Start conversation with freelancer
+        const response = await fetch(`${API_BASE}/api/v1/chat/start`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                participant2_id: freelancerId
+            })
+        });
+        
+        if (response.ok) {
+            const conversation = await response.json();
+            // Redirect to messages page with conversation_id
+            window.location.href = `messages.html?conversation_id=${conversation.id}`;
+        } else {
+            const error = await response.json().catch(() => ({}));
+            const errorMsg = error.detail || error.message || 'Không thể tạo cuộc trò chuyện. Vui lòng thử lại.';
+            alert(errorMsg);
+        }
+    } catch (error) {
+        console.error('Error starting conversation:', error);
+        alert('Có lỗi xảy ra khi tạo cuộc trò chuyện: ' + error.message);
+    }
+}
+
 // Expose functions globally for use in other scripts
 window.loadFavorites = loadFavorites;
 window.isFavorited = isFavorited;
 window.toggleFavorite = toggleFavorite;
 window.handleToggleFavorite = handleToggleFavorite;
 window.createFreelancerCard = createFreelancerCard;
+window.contactFreelancer = contactFreelancer;
 
 function initHeroSearch() {
     const searchButton = document.getElementById('heroSearchButton');
@@ -441,8 +497,129 @@ function initHeroSearch() {
     });
 }
 
+// Store all freelancers for filtering
+let allFreelancersCache = [];
+
+// Map category tags to filter criteria
+const categoryMap = {
+    'web-development': {
+        keywords: ['web-development', 'web', 'html', 'css', 'javascript', 'react', 'vue', 'angular'],
+        section: 'developers'
+    },
+    'mobile': {
+        keywords: ['mobile', 'ios', 'android', 'react-native', 'flutter', 'swift', 'kotlin'],
+        section: 'developers'
+    },
+    'ui-ux': {
+        keywords: ['ui', 'ux', 'ui/ux', 'user-interface', 'user-experience', 'figma', 'prototyping'],
+        section: 'designers'
+    },
+    'backend': {
+        keywords: ['backend', 'api', 'server', 'node', 'python', 'django', 'express', 'php', 'java', 'database'],
+        section: 'developers'
+    },
+    'frontend': {
+        keywords: ['frontend', 'front-end', 'react', 'vue', 'angular', 'javascript', 'html', 'css'],
+        section: 'developers'
+    },
+    'fullstack': {
+        keywords: ['fullstack', 'full-stack', 'full stack', 'mern', 'mean', 'lamp'],
+        section: 'developers'
+    },
+    'graphic-design': {
+        keywords: ['graphic', 'design', 'photoshop', 'illustrator', 'indesign', 'adobe'],
+        section: 'designers'
+    },
+    'branding': {
+        keywords: ['branding', 'brand', 'identity', 'logo', 'corporate'],
+        section: 'designers'
+    },
+    'video-design': {
+        keywords: ['video', 'animation', 'motion', 'after-effects', 'premiere', 'editing'],
+        section: 'designers'
+    },
+    'logo-design': {
+        keywords: ['logo', 'logotype', 'brandmark', 'symbol'],
+        section: 'designers'
+    }
+};
+
+// Filter freelancers by category
+function filterFreelancersByCategory(categoryKey) {
+    const category = categoryMap[categoryKey];
+    if (!category) return;
+    
+    const keywords = category.keywords.map(k => k.toLowerCase());
+    const section = category.section;
+    
+    // Filter freelancers
+    const filtered = allFreelancersCache.filter(freelancer => {
+        const categories = (freelancer.categories || []).map(c => String(c).toLowerCase());
+        const skills = (freelancer.skills || []).map(s => String(s).toLowerCase());
+        const headline = (freelancer.headline || '').toLowerCase();
+        
+        // Check if any keyword matches
+        return keywords.some(keyword => 
+            categories.some(cat => cat.includes(keyword)) ||
+            skills.some(skill => skill.includes(keyword)) ||
+            headline.includes(keyword)
+        );
+    });
+    
+    // Render filtered results
+    const targetGrid = section === 'developers' ? 
+        document.getElementById('developersGrid') : 
+        document.getElementById('designersGrid');
+    
+    if (!targetGrid) return;
+    
+    // Scroll to the section
+    const targetSection = section === 'developers' ? 
+        document.getElementById('developersSection') : 
+        document.getElementById('designersSection');
+    
+    if (targetSection) {
+        targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    
+    // Load favorites
+    loadFavorites().then(favorites => {
+        if (filtered.length > 0) {
+            targetGrid.innerHTML = filtered.map(f => {
+                const isFav = isFavorited(f.user_id, favorites);
+                return createFreelancerCard(f, isFav);
+            }).join('');
+        } else {
+            const categoryName = document.querySelector(`[data-category="${categoryKey}"]`)?.textContent || categoryKey;
+            targetGrid.innerHTML = `<div class="freelancer-empty"><i class="fas fa-user-slash"></i><strong>Không tìm thấy freelancer</strong><span>Không có freelancer nào phù hợp với danh mục "${categoryName}".</span></div>`;
+        }
+    });
+    
+    // Highlight the clicked category tag
+    document.querySelectorAll('.category-tag').forEach(tag => {
+        tag.classList.remove('active');
+    });
+    const clickedTag = document.querySelector(`[data-category="${categoryKey}"]`);
+    if (clickedTag) {
+        clickedTag.classList.add('active');
+    }
+}
+
+// Initialize category tag click handlers
+function initCategoryTags() {
+    const categoryTags = document.querySelectorAll('.category-tag[data-category]');
+    categoryTags.forEach(tag => {
+        tag.style.cursor = 'pointer';
+        tag.addEventListener('click', function() {
+            const categoryKey = this.getAttribute('data-category');
+            filterFreelancersByCategory(categoryKey);
+        });
+    });
+}
+
 function initializeHomepage() {
     loadAllFreelancersByCategory();
+    initCategoryTags();
     initHeroSearch();
 }
 

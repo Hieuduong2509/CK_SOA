@@ -19,6 +19,7 @@ class EscrowDepositRequest(BaseModel):
     project_id: int
     milestone_id: Optional[int] = None
     amount: float
+    from_wallet: bool = False  # True if deducting from wallet, False for direct payment
 
 
 class EscrowDepositResponse(BaseModel):

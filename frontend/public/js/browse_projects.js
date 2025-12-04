@@ -226,7 +226,119 @@
         if (action === 'view') {
             window.location.href = `workspace.html?project_id=${projectId}`;
         } else if (action === 'bid') {
-            window.location.href = `workspace.html?project_id=${projectId}#bids`;
+            openBidModal(projectId);
+        }
+    }
+
+    function openBidModal(projectId) {
+        const project = state.projects.find(function (p) { return p.id === parseInt(projectId); });
+        if (!project) {
+            alert('Không tìm thấy thông tin dự án.');
+            return;
+        }
+
+        // Check authentication
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            alert('Vui lòng đăng nhập để nộp thầu.');
+            window.location.href = 'login.html';
+            return;
+        }
+
+        // Set project ID
+        document.getElementById('bidProjectId').value = projectId;
+
+        // Display project info
+        const projectInfo = document.getElementById('bidProjectInfo');
+        projectInfo.innerHTML = `
+            <div class="bid-project-card">
+                <h3>${project.title || 'Không có tiêu đề'}</h3>
+                <p class="bid-project-description">${truncate(project.description || '', 200)}</p>
+                <div class="bid-project-meta">
+                    <span><i class="fas fa-money-bill-wave"></i> ${formatCurrency(project.budget)} · ${project.budget_type === 'HOURLY' ? 'Theo giờ' : 'Trọn gói'}</span>
+                    ${project.deadline ? `<span><i class="fas fa-hourglass-half"></i> Deadline: ${formatDeadline(project.deadline)}</span>` : ''}
+                </div>
+            </div>
+        `;
+
+        // Reset form
+        document.getElementById('bidForm').reset();
+        document.getElementById('bidErrorMessage').style.display = 'none';
+        document.getElementById('bidErrorMessage').textContent = '';
+
+        // Show modal
+        const modal = document.getElementById('bidModal');
+        modal.style.display = 'flex';
+    }
+
+    function closeBidModal() {
+        const modal = document.getElementById('bidModal');
+        modal.style.display = 'none';
+        document.getElementById('bidForm').reset();
+        document.getElementById('bidErrorMessage').style.display = 'none';
+    }
+
+    async function handleBidSubmit(event) {
+        event.preventDefault();
+
+        const projectId = document.getElementById('bidProjectId').value;
+        const price = parseFloat(document.getElementById('bidPrice').value);
+        const timelineDays = parseInt(document.getElementById('bidTimeline').value);
+        const coverLetter = document.getElementById('bidCoverLetter').value.trim();
+
+        const errorDiv = document.getElementById('bidErrorMessage');
+        const submitBtn = document.getElementById('submitBidBtn');
+
+        // Validation
+        if (!price || price <= 0) {
+            errorDiv.textContent = 'Vui lòng nhập giá đề xuất hợp lệ.';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        if (!timelineDays || timelineDays < 1) {
+            errorDiv.textContent = 'Vui lòng nhập thời gian hoàn thành hợp lệ (ít nhất 1 ngày).';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        if (!coverLetter || coverLetter.length < 20) {
+            errorDiv.textContent = 'Thư ngỏ phải có ít nhất 20 ký tự.';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        // Disable submit button
+        const originalBtnText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang gửi...';
+
+        errorDiv.style.display = 'none';
+
+        try {
+            const bidData = {
+                price: price,
+                timeline_days: timelineDays,
+                cover_letter: coverLetter
+            };
+
+            const result = await submitBid(projectId, bidData);
+
+            if (result) {
+                alert('Đã gửi thầu thành công! Khách hàng sẽ xem xét và liên hệ với bạn.');
+                closeBidModal();
+                // Optionally reload projects to update status
+                // loadProjects();
+            } else {
+                throw new Error('Không nhận được phản hồi từ server.');
+            }
+        } catch (error) {
+            console.error('Error submitting bid:', error);
+            errorDiv.textContent = error.message || 'Không thể gửi thầu. Vui lòng thử lại sau.';
+            errorDiv.style.display = 'block';
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
         }
     }
 
@@ -234,6 +346,33 @@
         init();
         if (elements.list) {
             elements.list.addEventListener('click', handleListClick);
+        }
+
+        // Bid modal handlers
+        const bidForm = document.getElementById('bidForm');
+        const closeBtn = document.getElementById('closeBidModal');
+        const cancelBtn = document.getElementById('cancelBidBtn');
+        const modal = document.getElementById('bidModal');
+
+        if (bidForm) {
+            bidForm.addEventListener('submit', handleBidSubmit);
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closeBidModal);
+        }
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', closeBidModal);
+        }
+
+        // Close modal when clicking outside
+        if (modal) {
+            modal.addEventListener('click', function (event) {
+                if (event.target === modal) {
+                    closeBidModal();
+                }
+            });
         }
     });
 })();

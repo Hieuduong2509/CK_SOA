@@ -3,36 +3,37 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from database import get_db
 from models import Event, Metric
-from typing import Dict
-import httpx
-import os
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
-
-AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:8001")
-USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://localhost:8002")
-PROJECT_SERVICE_URL = os.getenv("PROJECT_SERVICE_URL", "http://localhost:8003")
 
 
 @router.get("/summary")
 async def get_summary(db: Session = Depends(get_db)):
-    # Count events
     total_users = db.query(func.count(Event.user_id.distinct())).scalar() or 0
     total_projects = db.query(func.count()).filter(Event.event_type == "project.created").scalar() or 0
     
-    # Get revenue from metrics
     revenue = db.query(func.sum(Metric.value)).filter(
         Metric.metric_name == "revenue"
     ).scalar() or 0.0
     
-    # Top skills (would need aggregation from user service)
-    top_skills = []  # Mock
+    revenue_split = {"gig": 0.0, "bidding": 0.0, "unknown": 0.0}
+    metric_rows = db.query(Metric.meta_data, Metric.value).filter(Metric.metric_name == "revenue").all()
+    for meta, value in metric_rows:
+        value = value or 0.0
+        project_type = (meta or {}).get("project_type") if meta else None
+        if project_type and "gig" in project_type.lower():
+            revenue_split["gig"] += value
+        elif project_type and "bidding" in project_type.lower():
+            revenue_split["bidding"] += value
+        else:
+            revenue_split["unknown"] += value
     
     return {
         "total_users": total_users,
         "total_projects": total_projects,
         "total_revenue": revenue,
-        "top_skills": top_skills
+        "revenue_split": revenue_split,
+        "top_skills": []
     }
 
 

@@ -9,9 +9,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Database URLs
-AUTH_DB_URL = os.getenv("AUTH_DB_URL", "postgresql://postgres:postgres@localhost:5432/auth_db")
-MAIN_DB_URL = os.getenv("MAIN_DB_URL", "postgresql://postgres:postgres@localhost:5432/marketplace_db")
+# Database URLs - prefer Docker hostnames by default
+AUTH_DB_URL = os.getenv("AUTH_DB_URL", "postgresql://postgres:postgres@postgres-auth:5432/auth_db")
+MAIN_DB_URL = os.getenv("MAIN_DB_URL", "postgresql://postgres:postgres@postgres-main:5432/marketplace_db")
 
 def check_auth_db():
     """Kiểm tra users trong auth_db"""

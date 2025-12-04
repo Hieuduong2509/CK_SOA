@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản lý khiếu nại - Admin Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body.admin-body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 0;
+        }
+
+        /* Header Bar */
+        .admin-header-bar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .admin-header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 2rem;
+        }
+
+        .admin-header-left {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .back-btn-header {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: white;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .back-btn-header:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateX(-2px);
+        }
+
+        .admin-header-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .admin-header-title i {
+            font-size: 1.25rem;
+        }
+
+        /* Main Container */
+        .admin-detail-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* User Info Card */
+        .user-info-card {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .user-avatar-large {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 2.5rem;
+            font-weight: 600;
+            flex-shrink: 0;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .user-info-content {
+            flex: 1;
+        }
+
+        .user-info-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .user-info-name {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #1a202c;
+            margin: 0;
+        }
+
+        .user-info-details {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .user-info-detail-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: #4a5568;
+            font-size: 0.95rem;
+        }
+
+        .user-info-detail-item i {
+            color: #667eea;
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Content Grid */
+        .content-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Section Cards */
+        .section-card {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .section-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .section-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .section-card-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1a202c;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .section-card-header i {
+            color: #667eea;
+            font-size: 1.25rem;
+        }
+
+        /* Complaint & Review Items */
+        .complaint-item, .review-item {
+            padding: 1.5rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            background: #f7fafc;
+            transition: all 0.3s ease;
+        }
+
+        .complaint-item:hover, .review-item:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+            transform: translateX(4px);
+        }
+
+        .complaint-item h4, .review-item h4 {
+            margin: 0 0 0.75rem 0;
+            color: #1a202c;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .complaint-item p, .review-item p {
+            margin: 0.5rem 0;
+            color: #4a5568;
+            line-height: 1.6;
+        }
+
+        .complaint-meta, .review-meta {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e2e8f0;
+            font-size: 0.9rem;
+            color: #718096;
+            flex-wrap: wrap;
+        }
+
+        .complaint-meta span, .review-meta span {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .badge-danger {
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            color: #b91c1c;
+            padding: 0.35rem 0.85rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(185, 28, 28, 0.2);
+        }
+
+        .badge-success {
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            color: #065f46;
+            padding: 0.35rem 0.85rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(5, 95, 70, 0.2);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: #718096;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            color: #cbd5e0;
+            margin-bottom: 1rem;
+        }
+
+        .empty-state p {
+            font-size: 1.1rem;
+            margin: 0;
+        }
+
+        .text-danger {
+            color: #e53e3e;
+        }
+
+        .project-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        .project-link:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body class="admin-body">
+    <!-- Header Bar -->
+    <header class="admin-header-bar">
+        <div class="admin-header-content">
+            <div class="admin-header-left">
+                <a href="admin.html?panel=disputes" class="back-btn-header">
+                    <i class="fas fa-arrow-left"></i> Quay lại
+                </a>
+                <h1 class="admin-header-title">
+                    <i class="fas fa-gavel"></i>
+                    Quản lý khiếu nại
+                </h1>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="admin-detail-container">
+        <!-- User Info Card -->
+        <div class="user-info-card">
+            <div class="user-avatar-large" id="userAvatar">
+                <i class="fas fa-user"></i>
+            </div>
+            <div class="user-info-content">
+                <div class="user-info-header">
+                    <h2 class="user-info-name" id="userName">Đang tải...</h2>
+                    <span id="userRole" class="role-badge"></span>
+                </div>
+                <div class="user-info-details">
+                    <div class="user-info-detail-item">
+                        <i class="fas fa-envelope"></i>
+                        <span id="userEmail">-</span>
+                    </div>
+                    <div class="user-info-detail-item" id="userPhoneItem" style="display: none;">
+                        <i class="fas fa-phone"></i>
+                        <span id="userPhone">-</span>
+                    </div>
+                    <div class="user-info-detail-item">
+                        <i class="fas fa-calendar-alt"></i>
+                        <span id="userCreatedAt">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid -->
+        <div class="content-grid">
+            <!-- Complaints Section -->
+            <div class="section-card">
+                <div class="section-card-header">
+                    <h2>
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Khiếu nại
+                    </h2>
+                </div>
+                <div id="complaintsList">
+                    <div class="empty-state">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Đang tải dữ liệu...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 1-Star Reviews Section -->
+            <div class="section-card">
+                <div class="section-card-header">
+                    <h2>
+                        <i class="fas fa-star"></i>
+                        Đánh giá 1 sao
+                    </h2>
+                </div>
+                <div id="oneStarReviewsList">
+                    <div class="empty-state">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Đang tải dữ liệu...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script>
+        // API_BASE is already defined in config.js
+        
+        let currentUserId = null;
+        let currentRole = 'client';
+
+        async function initPage() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const userId = urlParams.get('user_id');
+            const role = urlParams.get('role') || 'client';
+            
+            if (!userId) {
+                alert('Thiếu thông tin user_id');
+                window.location.href = 'admin.html';
+                return;
+            }
+
+            currentUserId = userId;
+            currentRole = role;
+
+            await Promise.all([
+                loadUserInfo(userId, role),
+                loadComplaints(userId),
+                loadOneStarReviews(userId)
+            ]);
+        }
+
+        async function loadUserInfo(userId, role) {
+            try {
+                const token = getToken();
+                if (!token) {
+                    throw new Error('Chưa đăng nhập');
+                }
+                const response = await fetch(`${API_BASE}/api/v1/admin/users/${userId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({ detail: 'Không thể tải thông tin user' }));
+                    throw new Error(error.detail || 'Không thể tải thông tin user');
+                }
+                const user = await response.json();
+                
+                // Set user name
+                const userName = user.name || `User #${userId}`;
+                document.getElementById('userName').textContent = userName;
+                
+                // Set avatar initials
+                const initials = userName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+                const avatarEl = document.getElementById('userAvatar');
+                avatarEl.innerHTML = initials || '<i class="fas fa-user"></i>';
+                
+                // Set email
+                document.getElementById('userEmail').textContent = user.email || 'Chưa cập nhật';
+                
+                // Set phone
+                if (user.phone) {
+                    document.getElementById('userPhone').textContent = user.phone;
+                    document.getElementById('userPhoneItem').style.display = 'flex';
+                } else {
+                    document.getElementById('userPhoneItem').style.display = 'none';
+                }
+                
+                // Set created date
+                if (user.created_at) {
+                    const createdDate = new Date(user.created_at);
+                    document.getElementById('userCreatedAt').textContent = `Tạo ngày: ${createdDate.toLocaleDateString('vi-VN', { 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                    })}`;
+                } else {
+                    document.getElementById('userCreatedAt').textContent = 'Chưa có thông tin';
+                }
+                
+                // Use role from user data if available, otherwise use URL parameter
+                const userRole = user.role || role;
+                const roleBadge = document.getElementById('userRole');
+                roleBadge.textContent = userRole === 'freelancer' ? 'Freelancer' : 'User';
+                roleBadge.className = `role-badge ${userRole === 'freelancer' ? 'freelancer' : 'client'}`;
+            } catch (error) {
+                console.error('loadUserInfo', error);
+                document.getElementById('userName').textContent = 'Lỗi tải thông tin';
+            }
+        }
+
+        async function loadComplaints(userId) {
+            const container = document.getElementById('complaintsList');
+            try {
+                const token = getToken();
+                if (!token) {
+                    container.innerHTML = '<div class="empty-state text-danger">Chưa đăng nhập</div>';
+                    return;
+                }
+                const response = await fetch(`${API_BASE}/api/v1/admin/users/${userId}/complaints`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        container.innerHTML = '<div class="empty-state">Không có khiếu nại nào.</div>';
+                        return;
+                    }
+                    const error = await response.json().catch(() => ({ detail: 'Không thể tải khiếu nại' }));
+                    throw new Error(error.detail || 'Không thể tải khiếu nại');
+                }
+                const complaints = await response.json();
+                
+                if (!complaints || complaints.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-inbox"></i>
+                            <p>Không có khiếu nại nào.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = complaints.map(complaint => {
+                    const statusClass = complaint.status === 'RESOLVED' ? 'badge-success' : 'badge-danger';
+                    const statusText = complaint.status === 'RESOLVED' ? 'Đã giải quyết' : 
+                                     complaint.status === 'IN_PROGRESS' ? 'Đang xử lý' : 'Chưa xử lý';
+                    return `
+                    <div class="complaint-item">
+                        <h4>
+                            <i class="fas fa-exclamation-circle" style="color: #f59e0b;"></i>
+                            Khiếu nại #${complaint.id}
+                        </h4>
+                        <p><strong>Dự án:</strong> <a href="workspace.html?project_id=${complaint.project_id}" class="project-link">#${complaint.project_id}</a></p>
+                        <p><strong>Lý do:</strong> ${complaint.reason || 'Không có mô tả'}</p>
+                        <div class="complaint-meta">
+                            <span><i class="fas fa-calendar"></i> ${new Date(complaint.created_at).toLocaleString('vi-VN')}</span>
+                            <span class="${statusClass}">${statusText}</span>
+                        </div>
+                        ${complaint.resolution ? `
+                            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; background: #f0fdf4; padding: 1rem; border-radius: 8px;">
+                                <p style="margin: 0; color: #065f46;"><strong><i class="fas fa-check-circle"></i> Giải quyết:</strong> ${complaint.resolution}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+                }).join('');
+            } catch (error) {
+                console.error('loadComplaints', error);
+                container.innerHTML = `<div class="empty-state text-danger">Lỗi: ${error.message}</div>`;
+            }
+        }
+
+        async function loadOneStarReviews(userId) {
+            const container = document.getElementById('oneStarReviewsList');
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/users/${userId}/reviews`);
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({ detail: 'Không thể tải đánh giá' }));
+                    throw new Error(error.detail || 'Không thể tải đánh giá');
+                }
+                const reviews = await response.json();
+                
+                // Filter only 1-star reviews
+                const oneStarReviews = reviews.filter(r => r.rating_overall === 1 || r.rating_overall < 2);
+                
+                if (oneStarReviews.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-star"></i>
+                            <p>Không có đánh giá 1 sao nào.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = oneStarReviews.map(review => {
+                    const stars = '★'.repeat(Math.round(review.rating_overall)) + '☆'.repeat(5 - Math.round(review.rating_overall));
+                    return `
+                    <div class="review-item">
+                        <h4>
+                            <i class="fas fa-star" style="color: #fbbf24;"></i> 
+                            ${stars} (${review.rating_overall.toFixed(1)})
+                            ${review.project_id ? `<span style="color: #718096;">- <a href="workspace.html?project_id=${review.project_id}" class="project-link">Dự án #${review.project_id}</a></span>` : ''}
+                        </h4>
+                        ${review.comment ? `
+                            <p style="background: #fef2f2; padding: 1rem; border-radius: 8px; border-left: 4px solid #ef4444; margin: 0.75rem 0;">
+                                ${review.comment}
+                            </p>
+                        ` : '<p style="color: #718096; font-style: italic;">Không có nhận xét</p>'}
+                        <div class="review-meta">
+                            <span><i class="fas fa-user"></i> Người đánh giá: #${review.reviewer_id}</span>
+                            <span><i class="fas fa-calendar"></i> ${new Date(review.created_at).toLocaleString('vi-VN')}</span>
+                        </div>
+                    </div>
+                `;
+                }).join('');
+            } catch (error) {
+                console.error('loadOneStarReviews', error);
+                container.innerHTML = `<div class="empty-state text-danger">Lỗi: ${error.message}</div>`;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', initPage);
+    </script>
+</body>
+</html>
+

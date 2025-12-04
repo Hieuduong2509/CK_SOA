@@ -39,11 +39,17 @@ class EnumValue(TypeDecorator):
             raise
 
 
+class ProjectType(str, enum.Enum):
+    BIDDING = "BIDDING"
+    GIG_ORDER = "GIG_ORDER"
+
+
 class ProjectStatus(str, enum.Enum):
     DRAFT = "DRAFT"
     PENDING_APPROVAL = "pending_approval"  # Database has lowercase for this one
     OPEN = "OPEN"
     IN_PROGRESS = "IN_PROGRESS"
+    DELIVERED = "DELIVERED"  # Freelancer đã giao hàng, chờ client duyệt
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
     DISPUTED = "DISPUTED"
@@ -74,6 +80,7 @@ class Project(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     client_id = Column(Integer, nullable=False, index=True)
+    freelancer_id = Column(Integer, nullable=True, index=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=False)
     budget_type = Column(EnumValue(BudgetType, length=50), nullable=False)
@@ -86,12 +93,17 @@ class Project(Base):
     minimum_badge = Column(String, nullable=True)  # e.g., "Top Rated", "Premium"
     minimum_level = Column(Integer, nullable=True)  # Minimum freelancer level required
     status = Column(EnumValue(ProjectStatus, length=50), default=ProjectStatus.PENDING_APPROVAL)
+    project_type = Column(EnumValue(ProjectType, length=50), default=ProjectType.BIDDING)
     accepted_bid_id = Column(Integer, nullable=True)
+    service_package_id = Column(Integer, nullable=True)
+    requirements_answers = Column(JSON, default=list)
+    service_snapshot = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     bids = relationship("Bid", back_populates="project", cascade="all, delete-orphan")
     milestones = relationship("Milestone", back_populates="project", cascade="all, delete-orphan")
+    activities = relationship("ProjectActivity", back_populates="project", cascade="all, delete-orphan")
 
 
 class Bid(Base):
@@ -140,4 +152,20 @@ class MilestoneSubmission(Base):
     submitted_at = Column(DateTime(timezone=True), server_default=func.now())
 
     milestone = relationship("Milestone", back_populates="submissions")
+
+
+class ProjectActivity(Base):
+    __tablename__ = "project_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    action_type = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    # Use custom attribute name to avoid conflict with SQLAlchemy's Base.metadata
+    activity_metadata = Column("metadata", JSON, nullable=True)  # Store IP/user agent for disputes
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    project = relationship("Project", back_populates="activities")
+
 

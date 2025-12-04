@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:8001")
 PAYMENTS_SERVICE_URL = os.getenv("PAYMENTS_SERVICE_URL", "http://localhost:8005")
 PROJECT_SERVICE_URL = os.getenv("PROJECT_SERVICE_URL", "http://project-service:8000")
+USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://user-service:8000")
 
 
 class DisputeResolutionRequest(BaseModel):
@@ -81,6 +82,9 @@ async def proxy_request(method: str, url: str, token: Optional[str] = None, **kw
 
 
 def fetch_users(role: Optional[str] = None, verified: Optional[bool] = None):
+    from database import auth_engine
+    from sqlalchemy import text
+    
     query = """
         SELECT id, email, name, phone, headline, role, is_verified,
                is_email_verified, is_2fa_enabled, is_banned, suspended_until, created_at
@@ -134,6 +138,67 @@ async def get_users(
         token=token,
         params=params
     )
+
+
+@router.get("/users/{user_id}")
+def get_user_detail(
+    user_id: int,
+    token: str = Depends(require_admin_token)
+):
+    """Get detailed user information"""
+    try:
+        from database import auth_engine
+        from sqlalchemy import text
+        
+        query = """
+            SELECT id, email, name, phone, headline, role, is_verified,
+                   is_email_verified, is_2fa_enabled, is_banned, suspended_until, created_at
+            FROM users
+            WHERE id = :user_id
+        """
+        
+        with auth_engine.connect() as conn:
+            row = conn.execute(text(query), {"user_id": user_id}).mappings().first()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        return {
+            "id": row["id"],
+            "email": row["email"],
+            "name": row["name"],
+            "phone": row["phone"],
+            "headline": row["headline"],
+            "role": row["role"],
+            "is_verified": row["is_verified"],
+            "is_email_verified": row["is_email_verified"],
+            "is_2fa_enabled": row["is_2fa_enabled"],
+            "is_banned": row["is_banned"],
+            "suspended_until": row["suspended_until"].isoformat() if row["suspended_until"] else None,
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"Error in get_user_detail: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/users/{user_id}/complaints")
+def get_user_complaints(
+    user_id: int,
+    db: Session = Depends(get_db),
+    token: str = Depends(require_admin_token)
+):
+    """Get all complaints/disputes raised by or against a user"""
+    # Get disputes where user raised the complaint
+    disputes_raised = db.query(Dispute).filter(Dispute.raised_by == user_id).all()
+    
+    # Get disputes from projects where user is involved (client or freelancer)
+    # We need to check project ownership, but for now just return disputes raised by user
+    return disputes_raised
 
 
 @router.get("/disputes")
@@ -221,6 +286,61 @@ async def approve_project_admin(
         token=token
     )
     return result
+
+
+@router.get("/pending-services")
+async def get_pending_services(
+    token: str = Depends(require_admin_token),
+    limit: int = 100
+):
+    data = await proxy_request(
+        "GET",
+        f"{USER_SERVICE_URL}/api/v1/services",
+        token=token,
+        params={"status_filter": "pending", "limit": limit}
+    )
+    if isinstance(data, list):
+        return data[:limit]
+    return data
+
+
+@router.post("/services/{service_id}/approve")
+async def approve_service_admin(
+    service_id: int,
+    token: str = Depends(require_admin_token)
+):
+    return await proxy_request(
+        "POST",
+        f"{USER_SERVICE_URL}/api/v1/services/{service_id}/approve",
+        token=token
+    )
+
+
+@router.post("/services/{service_id}/reject")
+async def reject_service_admin(
+    service_id: int,
+    request: Request,
+    token: str = Depends(require_admin_token)
+):
+    payload = await request.json() if request.headers.get("content-type") == "application/json" else None
+    return await proxy_request(
+        "POST",
+        f"{USER_SERVICE_URL}/api/v1/services/{service_id}/reject",
+        token=token,
+        json=payload or {}
+    )
+
+
+@router.post("/services/{service_id}/hide")
+async def hide_service_admin(
+    service_id: int,
+    token: str = Depends(require_admin_token)
+):
+    return await proxy_request(
+        "POST",
+        f"{USER_SERVICE_URL}/api/v1/services/{service_id}/hide",
+        token=token
+    )
 
 
 @router.get("/pending-users")

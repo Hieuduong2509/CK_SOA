@@ -1,7 +1,7 @@
-from pydantic import BaseModel
-from typing import Optional, List, Union, Dict, Any, Literal
+from pydantic import BaseModel, Field
+from typing import Optional, List, Union, Dict, Any
 from datetime import datetime
-from models import ProjectStatus, BudgetType, BidStatus, MilestoneStatus
+from models import ProjectStatus, ProjectType, BudgetType, BidStatus, MilestoneStatus, ProjectActivity
 
 
 class AttachmentInfo(BaseModel):
@@ -26,6 +26,11 @@ class ProjectCreate(BaseModel):
     tags: List[str] = []
     minimum_badge: Optional[str] = None
     minimum_level: Optional[int] = None
+    project_type: Optional[ProjectType] = ProjectType.BIDDING
+    freelancer_id: Optional[int] = None
+    service_package_id: Optional[int] = None
+    requirements_answers: List[Any] = Field(default_factory=list)
+    service_snapshot: Optional[Dict[str, Any]] = None
 
 
 class ProjectUpdate(BaseModel):
@@ -35,6 +40,7 @@ class ProjectUpdate(BaseModel):
 class ProjectResponse(BaseModel):
     id: int
     client_id: int
+    freelancer_id: Optional[int] = None
     title: str
     description: str
     budget_type: BudgetType
@@ -43,12 +49,17 @@ class ProjectResponse(BaseModel):
     attachments: List[Union[str, Dict[str, Any]]]  # Accept both strings (legacy) and objects
     deadline: Optional[datetime]
     status: ProjectStatus
+    project_type: ProjectType
     accepted_bid_id: Optional[int]
+    service_package_id: Optional[int]
+    requirements_answers: List[Any] = []
+    service_snapshot: Optional[Dict[str, Any]] = None
     created_at: datetime
     category: Optional[str] = None
     tags: List[str] = []
     minimum_badge: Optional[str] = None
     minimum_level: Optional[int] = None
+    bids_count: Optional[int] = 0  # Number of bids/applicants
 
     class Config:
         from_attributes = True
@@ -113,9 +124,23 @@ class RevisionRequest(BaseModel):
 class FreelancerOrderResponse(BaseModel):
     project: ProjectResponse
     bid_id: int
-    bid_status: BidStatus
-    bid_price: float
-    bid_timeline_days: int
-    is_awarded: bool
-    order_state: Literal["active", "pending"]
+
+
+class ServiceOrderCreate(BaseModel):
+    service_id: int
+    requirements_answers: List[Any] = Field(default_factory=list)
+
+
+class ProjectActivityResponse(BaseModel):
+    id: int
+    project_id: int
+    user_id: Optional[int] = None
+    action_type: str
+    description: Optional[str] = None
+    created_at: datetime
+    metadata: Optional[Dict[str, Any]] = Field(default=None, alias="activity_metadata")
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
 

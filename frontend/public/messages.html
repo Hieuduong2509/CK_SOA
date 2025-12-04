@@ -11,23 +11,71 @@
 <body>
     <div id="navbar-root"></div>
 
-    <main class="page-container">
-        <header class="page-header">
-            <h1>Messages</h1>
-            <p>Tất cả hội thoại giữa bạn và đối tác sẽ xuất hiện tại đây.</p>
-        </header>
+    <main class="messages-page">
+        <section class="messages-layout">
+            <aside class="conversation-panel">
+                <header class="conversation-header">
+                    <div>
+                        <h1>Hộp thư</h1>
+                        <p>Tin nhắn giữa bạn và freelancer/khách hàng</p>
+                    </div>
+                    <div class="conversation-search">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="conversationSearchInput" placeholder="Tìm theo tên hoặc dự án">
+                    </div>
+                </header>
+                <div id="conversationsEmptyState" class="empty-state small" style="display: none;">
+                    <i class="fas fa-comment-dots"></i>
+                    <p>Chưa có cuộc trò chuyện nào.</p>
+                </div>
+                <div id="conversationList" class="conversation-list"></div>
+            </aside>
 
-        <section class="card">
-            <div class="empty-state">
-                <i class="fas fa-comment-dots"></i>
-                <h3>No messages yet</h3>
-                <p>Khi bạn bắt đầu trao đổi với freelancer hoặc khách hàng, hội thoại sẽ được hiển thị.</p>
-            </div>
+            <section class="chat-panel">
+                <header class="chat-header">
+                    <div>
+                        <h2 id="chatPartnerName">Chọn một cuộc trò chuyện</h2>
+                        <p id="chatPartnerMeta"></p>
+                    </div>
+                    <div>
+                        <span id="chatProjectTag" class="chat-project-tag" style="display:none;"></span>
+                    </div>
+                </header>
+
+                <div id="chatPlaceholder" class="chat-placeholder">
+                    <i class="fas fa-comments"></i>
+                    <h3>Chưa có cuộc trò chuyện nào được chọn</h3>
+                    <p>Hãy chọn một người trong danh sách bên trái để bắt đầu nhắn tin.</p>
+                </div>
+
+                <div id="chatWindow" class="chat-window" style="display: none;">
+                    <div id="messageThread" class="message-thread"></div>
+                    <form id="messageComposer" class="message-composer">
+                        <textarea id="messageInput" rows="2" placeholder="Nhập nội dung tin nhắn của bạn..."></textarea>
+                        <div class="composer-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-paper-plane"></i> Gửi tin
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
         </section>
     </main>
 
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/navbar.js"></script>
+    <script src="js/messages.js"></script>
+    <script>
+        // Mark messages as viewed when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            localStorage.setItem('lastViewedMessages', new Date().toISOString());
+            // Update badge immediately
+            if (typeof updateMessagesBadge === 'function') {
+                updateMessagesBadge();
+            }
+        });
+    </script>
 </body>
 </html>

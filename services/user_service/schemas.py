@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from pydantic import Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
@@ -34,6 +34,7 @@ class ProfileResponse(ProfileBase):
     starting_price: Optional[float] = None
     total_stars: float = 0.0
     level: int = 1
+    role: Optional[str] = None  # "client" or "freelancer" from auth service
 
     class Config:
         from_attributes = True
@@ -63,29 +64,58 @@ class PortfolioItemResponse(BaseModel):
         from_attributes = True
 
 
-class PackageCreate(BaseModel):
+class PackageBase(BaseModel):
     name: str
     description: Optional[str] = None
     price: float
-    deliverables: List[str] = []
+    deliverables: List[str] = Field(default_factory=list)
     revisions: int = 1
     delivery_days: int
+    category: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    requirements: List[Dict[str, Any]] = Field(default_factory=list)
+    faq: List[Dict[str, Any]] = Field(default_factory=list)
+    cover_image: Optional[str] = None
+    gallery: List[str] = Field(default_factory=list)
+    rejection_reason: Optional[str] = None
 
 
-class PackageResponse(BaseModel):
+class PackageCreate(PackageBase):
+    pass
+
+
+class PackageUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    deliverables: Optional[List[str]] = None
+    revisions: Optional[int] = None
+    delivery_days: Optional[int] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    requirements: Optional[List[Dict[str, Any]]] = None
+    faq: Optional[List[Dict[str, Any]]] = None
+    cover_image: Optional[str] = None
+    gallery: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+
+
+class PackageResponse(PackageBase):
     id: int
     profile_id: int
-    name: str
-    description: Optional[str]
-    price: float
-    deliverables: List[str]
-    revisions: int
-    delivery_days: int
     is_active: bool
+    status: str
     created_at: datetime
+    updated_at: Optional[datetime] = None
+    rating: float = 0.0
+    total_reviews: int = 0
 
     class Config:
         from_attributes = True
+
+
+class ServiceResponse(PackageResponse):
+    profile: Optional[ProfileResponse] = None
 
 
 class FreelancerFilter(BaseModel):

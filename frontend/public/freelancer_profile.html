@@ -21,6 +21,7 @@
                 <h3>Điều hướng nhanh</h3>
                 <div class="quick-links">
                     <a href="#overviewSection"><i class="fas fa-user"></i> Tổng quan</a>
+                    <a href="#servicesSection"><i class="fas fa-box-open"></i> Gói dịch vụ</a>
                     <a href="#portfolioSection"><i class="fas fa-briefcase"></i> Portfolio</a>
                     <a href="#projectHistorySection"><i class="fas fa-diagram-project"></i> Dự án</a>
                     <a href="#reviewsSection"><i class="fas fa-star"></i> Đánh giá</a>
@@ -57,6 +58,22 @@
                 <div id="badgeList" class="badge-list"></div>
             </section>
 
+            <section class="card" id="servicesSection" style="display: none;">
+                <div class="card-header">
+                    <div>
+                        <h2>Gói dịch vụ nổi bật</h2>
+                        <p class="card-subtitle">Những gói cố định bạn có thể đặt nhanh từ freelancer này</p>
+                    </div>
+                    <small class="text-muted" id="servicesHint"></small>
+                </div>
+                <div id="packagesGrid" class="service-market-grid">
+                    <div class="empty-state">
+                        <i class="fas fa-store"></i>
+                        <p>Đang tải các gói dịch vụ...</p>
+                    </div>
+                </div>
+            </section>
+
             <section class="card" id="portfolioSection">
                 <div class="card-header">
                     <div>
@@ -89,9 +106,98 @@
         </section>
     </main>
 
+    <!-- Edit Profile Modal -->
+    <div id="editProfileModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
+            <header class="modal-header">
+                <h3>Chỉnh sửa hồ sơ</h3>
+                <button class="modal-close-btn" id="closeEditModalBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </header>
+            <form id="editProfileForm">
+                <div class="edit-profile-form-content">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="editDisplayName">Tên hiển thị *</label>
+                            <input type="text" id="editDisplayName" required>
+                        </div>
+                        <div class="form-field">
+                            <label for="editHeadline">Tiêu đề (Headline)</label>
+                            <input type="text" id="editHeadline" placeholder="Ví dụ: Full-stack Developer">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="editEmail">Email</label>
+                            <input type="email" id="editEmail">
+                        </div>
+                        <div class="form-field">
+                            <label for="editPhone">Số điện thoại</label>
+                            <input type="tel" id="editPhone" placeholder="Ví dụ: 0123456789">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-field full-width">
+                            <label for="editLocation">Vị trí</label>
+                            <input type="text" id="editLocation" placeholder="Ví dụ: Hồ Chí Minh, Việt Nam">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-field full-width">
+                            <label for="editBio">Giới thiệu (Bio)</label>
+                            <textarea id="editBio" rows="5" placeholder="Mô tả về bản thân, kỹ năng và kinh nghiệm..."></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-field full-width">
+                            <label for="editSkills">Kỹ năng (mỗi kỹ năng một dòng)</label>
+                            <textarea id="editSkills" rows="3" placeholder="Python&#10;React&#10;Node.js"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-field full-width">
+                            <label for="editLanguages">Ngôn ngữ (mỗi ngôn ngữ một dòng)</label>
+                            <textarea id="editLanguages" rows="2" placeholder="Tiếng Việt&#10;English"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-field full-width">
+                            <label for="editResponseTime">Thời gian phản hồi (chỉ cho Freelancer)</label>
+                            <select id="editResponseTime">
+                                <option value="">Chọn thời gian phản hồi</option>
+                                <option value="Phản hồi trong 30 phút">Phản hồi trong 30 phút</option>
+                                <option value="Phản hồi trong 1 giờ">Phản hồi trong 1 giờ</option>
+                                <option value="Phản hồi trong 2 giờ">Phản hồi trong 2 giờ</option>
+                                <option value="Phản hồi trong 3 giờ">Phản hồi trong 3 giờ</option>
+                                <option value="Phản hồi trong 1 ngày">Phản hồi trong 1 ngày</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div id="editProfileError" class="form-error"></div>
+                </div>
+                <footer class="modal-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelEditBtn">Hủy</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Lưu thay đổi
+                    </button>
+                </footer>
+            </form>
+        </div>
+    </div>
+
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/navbar.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/service_order.js"></script>
     <script src="js/profile.js"></script>
     <script>
         (function() {

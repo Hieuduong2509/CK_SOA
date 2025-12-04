@@ -1,34 +1,37 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from database import get_db
 from schemas import (
     ProjectCreate, ProjectUpdate, ProjectResponse, BidCreate, BidResponse,
     AcceptBidRequest, MilestoneCreate, MilestoneResponse,
-    MilestoneSubmissionCreate, RevisionRequest, FreelancerOrderResponse
+    MilestoneSubmissionCreate, RevisionRequest, FreelancerOrderResponse,
+    ServiceOrderCreate, ProjectActivityResponse
 )
 from crud import (
     create_project, get_project, update_project, get_projects_by_client, get_projects_by_freelancer,
     create_bid, get_bids_by_project, accept_bid,
     create_milestone, get_milestones, submit_milestone,
-    approve_milestone, request_revision, close_project, delete_project, approve_project
+    approve_milestone, request_revision, close_project, delete_project, approve_project,
+    get_project_activities, deliver_project, request_revision_project, accept_delivery,
 )
-from models import Bid, Project, ProjectStatus
+from models import Bid, Project, ProjectStatus, ProjectType, BudgetType, MilestoneStatus
 import httpx
 import os
 import pika
 import json
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from io import BytesIO
 from minio import Minio
 from minio.error import S3Error
 from datetime import timedelta
+from sqlalchemy.orm import object_session
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
-USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://localhost:8002")
+USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://user-service:8000")
 PAYMENTS_SERVICE_URL = os.getenv("PAYMENTS_SERVICE_URL", "http://localhost:8005")
 
 # MinIO configuration
@@ -43,6 +46,21 @@ minio_client = Minio(
     secret_key=MINIO_SECRET_KEY,
     secure=False
 )
+
+def get_client_ip(request: Request) -> str:
+    """Extract client IP address from request (for activity logging)"""
+    # Check for forwarded IP (behind proxy/load balancer)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip
+    # Fallback to direct client IP
+    if request.client:
+        return request.client.host
+    return "unknown"
+
 
 def ensure_bucket(bucket_name: str):
     try:
@@ -175,6 +193,36 @@ def publish_event(event_type: str, data: dict):
         print(f"Failed to publish event: {e}")
 
 
+@router.get("/{project_id}/activities", response_model=List[ProjectActivityResponse])
+def get_project_activities_endpoint(
+    project_id: int,
+    db: Session = Depends(get_db),
+    account=Depends(resolve_account),
+):
+    # Chỉ client chủ dự án hoặc freelancer được mời mới xem được
+    project = get_project(db, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    user_id = account.get("id")
+    if user_id not in [project.client_id, project.freelancer_id]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không có quyền xem hoạt động của dự án này.",
+        )
+
+    activities = get_project_activities(db, project_id)
+    return activities
+
+
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 def create_project_endpoint(
     project: ProjectCreate,
@@ -194,7 +242,193 @@ def create_project_endpoint(
         del payload['status']
     project_obj = create_project(db, client_id, **payload)
     publish_event("project.created", {"project_id": project_obj.id, "client_id": client_id})
-    return project_obj
+    return enrich_project_with_bids_count(project_obj, db)
+
+
+@router.post("/create-from-service", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+def create_project_from_service_endpoint(
+    payload: ServiceOrderCreate,
+    db: Session = Depends(get_db),
+    account=Depends(resolve_account)
+):
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+
+    client_id = account.get("id")
+
+    try:
+        service_resp = httpx.get(
+            f"{USER_SERVICE_URL}/api/v1/services/{payload.service_id}",
+            timeout=5.0
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Cannot reach user service: {exc}"
+        )
+
+    if service_resp.status_code != 200:
+        raise HTTPException(
+            status_code=service_resp.status_code,
+            detail="Unable to retrieve service package information"
+        )
+
+    service_data = service_resp.json()
+    
+    # Validate service status
+    service_status = service_data.get("status", "").upper()
+    if service_status != "APPROVED":
+        if service_status in ["PAUSED", "HIDDEN"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Gói dịch vụ này hiện đang tạm ẩn hoặc tạm dừng. Vui lòng liên hệ freelancer để biết thêm chi tiết."
+            )
+        elif service_status == "REJECTED":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Gói dịch vụ này đã bị từ chối và không thể mua."
+            )
+        elif service_status in ["DRAFT", "PENDING"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Gói dịch vụ này chưa được duyệt và chưa sẵn sàng để mua."
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Gói dịch vụ không ở trạng thái phù hợp để mua (trạng thái: {service_status})."
+            )
+    
+    profile = service_data.get("profile")
+    freelancer_id = profile.get("user_id") if profile else None
+
+    if not freelancer_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Service package is missing freelancer information"
+        )
+
+    if freelancer_id == client_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot purchase your own service package"
+        )
+    
+    # TODO: Check if freelancer is banned/suspended (requires user_service API)
+    # For now, we'll skip this check as it requires additional API call
+
+    delivery_days = service_data.get("delivery_days") or 0
+    deadline = datetime.utcnow() + timedelta(days=delivery_days or 7)
+
+    primary_media = None
+    gallery = service_data.get("gallery") or []
+    if gallery:
+        primary_media = gallery[0]
+    elif service_data.get("cover_image"):
+        primary_media = service_data.get("cover_image")
+
+    service_snapshot: Dict[str, Any] = {
+        "service_id": service_data.get("id"),
+        "name": service_data.get("name"),
+        "description": service_data.get("description"),
+        "price": service_data.get("price"),
+        "category": service_data.get("category"),
+        "delivery_days": service_data.get("delivery_days"),
+        "revisions": service_data.get("revisions"),
+        "cover_image": primary_media,
+        "gallery": gallery,
+        "freelancer": {
+            "id": freelancer_id,
+            "name": profile.get("display_name") if profile else None,
+            "avatar": profile.get("avatar_url") if profile else None,
+            "headline": profile.get("headline") if profile else None
+        }
+    }
+
+    project_obj = create_project(
+        db,
+        client_id=client_id,
+        status=ProjectStatus.IN_PROGRESS,
+        project_type=ProjectType.GIG_ORDER,
+        title=service_data.get("name") or "Gói dịch vụ",
+        description=service_data.get("description") or "",
+        budget_type=BudgetType.FIXED,
+        budget=service_data.get("price") or 0,
+        skills_required=service_data.get("tags") or [],
+        category=service_data.get("category"),
+        tags=service_data.get("tags") or [],
+        deadline=deadline,
+        freelancer_id=freelancer_id,
+        service_package_id=service_data.get("id"),
+        requirements_answers=payload.requirements_answers or [],
+        service_snapshot=service_snapshot
+    )
+
+    # Auto-create a milestone corresponding to the service package price
+    milestone = create_milestone(
+        db,
+        project_obj.id,
+        title=service_data.get("name") or "Gói dịch vụ",
+        description="Tự động tạo từ đơn hàng dịch vụ",
+        amount=service_data.get("price") or 0
+    )
+    milestone.status = MilestoneStatus.IN_PROGRESS
+    db.commit()
+
+    # Note: Escrow deposit will be created when client completes payment
+    # This is handled in payment.html after project creation
+    # We don't create escrow here because payment hasn't been processed yet
+
+    publish_event(
+        "project.created",
+        {"project_id": project_obj.id, "client_id": client_id, "type": "service_order"}
+    )
+    
+    # Publish specific event for messaging service to auto-create conversation
+    publish_event(
+        "project.created_from_gig",
+        {
+            "project_id": project_obj.id,
+            "client_id": client_id,
+            "freelancer_id": freelancer_id,
+            "service_name": service_data.get("name") or "Gói dịch vụ"
+        }
+    )
+    
+    return enrich_project_with_bids_count(project_obj, db)
+
+
+def enrich_project_with_bids_count(project: Project, db: Session) -> dict:
+    """Add bids_count to project data"""
+    bids_count = db.query(Bid).filter(Bid.project_id == project.id).count()
+    project_dict = {
+        "id": project.id,
+        "client_id": project.client_id,
+        "freelancer_id": project.freelancer_id,
+        "title": project.title,
+        "description": project.description,
+        "budget_type": project.budget_type,
+        "budget": project.budget,
+        "skills_required": project.skills_required or [],
+        "attachments": project.attachments or [],
+        "deadline": project.deadline,
+        "status": project.status,
+        "project_type": project.project_type,
+        "accepted_bid_id": project.accepted_bid_id,
+        "service_package_id": project.service_package_id,
+        "requirements_answers": project.requirements_answers or [],
+        "service_snapshot": project.service_snapshot or None,
+        "created_at": project.created_at,
+        "category": project.category,
+        "tags": project.tags or [],
+        "minimum_badge": project.minimum_badge,
+        "minimum_level": project.minimum_level,
+        "bids_count": bids_count
+    }
+    return project_dict
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
@@ -205,7 +439,7 @@ def get_project_endpoint(project_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found"
         )
-    return project
+    return enrich_project_with_bids_count(project, db)
 
 
 @router.get("/freelancers/{freelancer_id}/orders", response_model=list[FreelancerOrderResponse])
@@ -236,11 +470,26 @@ def get_freelancer_orders(
     project_map = {project.id: project for project in projects}
 
     response_data = []
+    completed_statuses = {ProjectStatus.COMPLETED}
+    active_statuses = {ProjectStatus.IN_PROGRESS, ProjectStatus.DELIVERED}
+
     for bid in bids:
         project = project_map.get(bid.project_id)
         if not project:
             continue
         is_awarded = project.accepted_bid_id == bid.id
+
+        # Derive order_state for freelancer view
+        if project.status in completed_statuses:
+            order_state = "completed"
+        elif is_awarded and project.status in active_statuses:
+            order_state = "active"
+        elif is_awarded:
+            # Awarded but not yet in progress/delivered (e.g., pending payment)
+            order_state = "active"
+        else:
+            order_state = "pending"
+
         response_data.append({
             "project": project,
             "bid_id": bid.id,
@@ -248,7 +497,7 @@ def get_freelancer_orders(
             "bid_price": bid.price,
             "bid_timeline_days": bid.timeline_days,
             "is_awarded": is_awarded,
-            "order_state": "active" if is_awarded else "pending"
+            "order_state": order_state
         })
 
     return response_data
@@ -310,7 +559,7 @@ def update_project_endpoint(
             detail="Failed to update project"
         )
     
-    return updated_project
+    return enrich_project_with_bids_count(updated_project, db)
 
 
 @router.get("", response_model=list[ProjectResponse])
@@ -318,8 +567,19 @@ def list_projects(
     client_id: int = None,
     freelancer_id: int = None,
     status_filter: Optional[str] = None,
+    project_type: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
+    type_filter = None
+    if project_type:
+        try:
+            type_filter = ProjectType(project_type)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid project type filter"
+            )
+
     if client_id:
         projects = get_projects_by_client(db, client_id)
     elif freelancer_id:
@@ -337,7 +597,10 @@ def list_projects(
                 )
         else:
             query = query.filter(Project.status == ProjectStatus.OPEN)
-        return query.order_by(Project.created_at.desc()).all()
+        if type_filter:
+            query = query.filter(Project.project_type == type_filter)
+        projects = query.order_by(Project.created_at.desc()).all()
+        return [enrich_project_with_bids_count(p, db) for p in projects]
 
     if status_filter:
         try:
@@ -348,10 +611,10 @@ def list_projects(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid status filter"
             )
-    else:
-        if freelancer_id:
-            projects = [p for p in projects if p.status == ProjectStatus.OPEN]
-    return projects
+    if type_filter:
+        projects = [p for p in projects if p.project_type == type_filter]
+    
+    return [enrich_project_with_bids_count(p, db) for p in projects]
 
 
 @router.post("/{project_id}/bids", response_model=BidResponse, status_code=status.HTTP_201_CREATED)
@@ -375,7 +638,14 @@ def create_bid_endpoint(
     freelancer_id = account.get("id")
 
     bid_obj = create_bid(db, project_id, freelancer_id, **bid.dict())
-    publish_event("bid.created", {"bid_id": bid_obj.id, "project_id": project_id, "freelancer_id": freelancer_id})
+    # Get project to get client_id
+    project = get_project(db, project_id)
+    publish_event("bid.created", {
+        "bid_id": bid_obj.id,
+        "project_id": project_id,
+        "freelancer_id": freelancer_id,
+        "client_id": project.client_id if project else None
+    })
     return bid_obj
 
 
@@ -389,8 +659,33 @@ def get_project_bids(project_id: int, db: Session = Depends(get_db)):
 def accept_bid_endpoint(
     project_id: int,
     request: AcceptBidRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account=Depends(resolve_account)
 ):
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+
+    project_obj = get_project(db, project_id)
+    if not project_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+
+    role = account.get("role")
+    if isinstance(role, dict):
+        role = role.get("value") or role.get("name")
+    is_admin = str(role).lower() == "admin"
+
+    if not is_admin and account.get("id") != project_obj.client_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the project owner can accept bids"
+        )
+
     project = accept_bid(db, project_id, request.bid_id)
     if not project:
         raise HTTPException(
@@ -420,7 +715,7 @@ def accept_bid_endpoint(
             bid_db.close()
     
     publish_event("bid.accepted", {"project_id": project_id, "bid_id": request.bid_id})
-    return project
+    return enrich_project_with_bids_count(project, db)
 
 
 @router.post("/{project_id}/milestones", response_model=MilestoneResponse, status_code=status.HTTP_201_CREATED)
@@ -513,7 +808,7 @@ def close_project_endpoint(project_id: int, db: Session = Depends(get_db)):
             detail="Project not found"
         )
     publish_event("project.closed", {"project_id": project_id})
-    return project
+    return enrich_project_with_bids_count(project, db)
 
 
 @router.post("/{project_id}/milestones/{milestone_id}/approve")
@@ -541,6 +836,269 @@ def approve_milestone_endpoint(
     
     publish_event("milestone.approved", {"milestone_id": milestone_id})
     return {"message": "Milestone approved and payment released"}
+
+
+@router.post("/{project_id}/deliver", response_model=ProjectResponse, status_code=status.HTTP_200_OK)
+def deliver_project_endpoint(
+    project_id: int,
+    files: List[UploadFile] = File(None),
+    description: Optional[str] = None,
+    request: Request = None,
+    db: Session = Depends(get_db),
+    account=Depends(resolve_account)
+):
+    """Deliver GIG_ORDER project - freelancer uploads final files"""
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+    
+    project = get_project(db, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    # Only allow for GIG_ORDER projects
+    if project.project_type != ProjectType.GIG_ORDER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint is only for GIG_ORDER projects"
+        )
+    
+    # Only freelancer assigned to project can deliver
+    user_id = account.get("id")
+    if project.freelancer_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the assigned freelancer can deliver this project"
+        )
+    
+    # Only allow if status is IN_PROGRESS
+    if project.status != ProjectStatus.IN_PROGRESS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot deliver project. Current status: {project.status.value}"
+        )
+    
+    # Upload files if provided
+    file_urls = []
+    if files:
+        ensure_bucket(MINIO_BUCKET)
+        for file in files:
+            try:
+                file_data = file.file.read()
+                file_ext = os.path.splitext(file.filename)[1] if file.filename else ""
+                object_name = f"projects/{project_id}/delivery/{uuid.uuid4()}{file_ext}"
+                
+                minio_client.put_object(
+                    MINIO_BUCKET,
+                    object_name,
+                    BytesIO(file_data),
+                    length=len(file_data),
+                    content_type=file.content_type or "application/octet-stream"
+                )
+                
+                file_url = f"http://{MINIO_ENDPOINT}/{MINIO_BUCKET}/{object_name}"
+                file_urls.append(file_url)
+            except Exception as e:
+                print(f"Error uploading file {file.filename}: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to upload file: {file.filename}"
+                )
+    
+    # Get client IP for activity log
+    metadata = {
+        "ip_address": get_client_ip(request) if request else "unknown",
+        "user_agent": request.headers.get("User-Agent", "unknown") if request else "unknown"
+    }
+    
+    # Deliver project
+    updated_project = deliver_project(
+        db,
+        project_id,
+        file_urls=file_urls if file_urls else None,
+        description=description,
+        user_id=user_id,
+        metadata=metadata
+    )
+    
+    if not updated_project:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to deliver project"
+        )
+    
+    publish_event("project.delivered", {
+        "project_id": project_id,
+        "freelancer_id": user_id,
+        "client_id": project.client_id
+    })
+    
+    return enrich_project_with_bids_count(updated_project, db)
+
+
+@router.post("/{project_id}/request-revision", response_model=ProjectResponse, status_code=status.HTTP_200_OK)
+def request_revision_project_endpoint(
+    project_id: int,
+    reason: Optional[str] = None,
+    request: Request = None,
+    db: Session = Depends(get_db),
+    account=Depends(resolve_account)
+):
+    """Request revision for GIG_ORDER project - client asks freelancer to revise"""
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+    
+    project = get_project(db, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    # Only allow for GIG_ORDER projects
+    if project.project_type != ProjectType.GIG_ORDER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint is only for GIG_ORDER projects"
+        )
+    
+    # Only client can request revision
+    user_id = account.get("id")
+    if project.client_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the project client can request revision"
+        )
+    
+    # Only allow if status is DELIVERED
+    if project.status != ProjectStatus.DELIVERED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot request revision. Current status: {project.status.value}"
+        )
+    
+    # Get client IP for activity log
+    metadata = {
+        "ip_address": get_client_ip(request) if request else "unknown",
+        "user_agent": request.headers.get("User-Agent", "unknown") if request else "unknown"
+    }
+    
+    # Request revision
+    updated_project = request_revision_project(
+        db,
+        project_id,
+        reason=reason,
+        user_id=user_id,
+        metadata=metadata
+    )
+    
+    if not updated_project:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to request revision"
+        )
+    
+    publish_event("project.revision_requested", {
+        "project_id": project_id,
+        "client_id": user_id,
+        "freelancer_id": project.freelancer_id
+    })
+    
+    return enrich_project_with_bids_count(updated_project, db)
+
+
+@router.post("/{project_id}/accept-delivery", response_model=ProjectResponse, status_code=status.HTTP_200_OK)
+def accept_delivery_endpoint(
+    project_id: int,
+    request: Request = None,
+    db: Session = Depends(get_db),
+    account=Depends(resolve_account)
+):
+    """Accept delivery for GIG_ORDER project - client accepts and project is completed"""
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+    
+    project = get_project(db, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    # Only allow for GIG_ORDER projects
+    if project.project_type != ProjectType.GIG_ORDER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint is only for GIG_ORDER projects"
+        )
+    
+    # Only client can accept delivery
+    user_id = account.get("id")
+    if project.client_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the project client can accept delivery"
+        )
+    
+    # Only allow if status is DELIVERED
+    if project.status != ProjectStatus.DELIVERED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot accept delivery. Current status: {project.status.value}"
+        )
+    
+    # Get client IP for activity log
+    metadata = {
+        "ip_address": get_client_ip(request) if request else "unknown",
+        "user_agent": request.headers.get("User-Agent", "unknown") if request else "unknown"
+    }
+    
+    # Accept delivery
+    updated_project = accept_delivery(
+        db,
+        project_id,
+        user_id=user_id,
+        metadata=metadata
+    )
+    
+    if not updated_project:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to accept delivery"
+        )
+    
+    # Release escrow
+    milestones = get_milestones(db, project_id)
+    if milestones:
+        milestone = milestones[0]
+        if milestone.escrow_id:
+            try:
+                httpx.post(
+                    f"{PAYMENTS_SERVICE_URL}/api/v1/payments/escrow/release",
+                    json={"escrow_id": milestone.escrow_id},
+                    timeout=5.0
+                )
+            except:
+                pass  # Log error but don't fail
+    
+    publish_event("project.delivery_accepted", {
+        "project_id": project_id,
+        "client_id": user_id,
+        "freelancer_id": project.freelancer_id
+    })
+    
+    return enrich_project_with_bids_count(updated_project, db)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_200_OK)
@@ -618,7 +1176,7 @@ def approve_project_endpoint(
         )
     
     publish_event("project.approved", {"project_id": project_id})
-    return {"message": "Project approved successfully", "project": approved_project}
+    return {"message": "Project approved successfully", "project": enrich_project_with_bids_count(approved_project, db)}
 
 
 @router.post("/{project_id}/attachments", status_code=status.HTTP_201_CREATED)
@@ -649,11 +1207,11 @@ async def upload_project_attachment(
             detail="Project not found"
         )
     
-    # Check if user is the owner of the project
-    if account.get("id") != project.client_id:
+    # Check if user is the owner (client) or assigned freelancer
+    if account.get("id") not in [project.client_id, project.freelancer_id]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only upload attachments to your own projects"
+            detail="Only the project client or the assigned freelancer can upload attachments"
         )
     
     # Maximum file size: 50MB
@@ -762,11 +1320,11 @@ def delete_project_attachment(
             detail="Project not found"
         )
     
-    # Check if user is the owner of the project
-    if account.get("id") != project.client_id:
+    # Check if user is the owner (client) or assigned freelancer
+    if account.get("id") not in [project.client_id, project.freelancer_id]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only delete attachments from your own projects"
+            detail="Only the project client or the assigned freelancer can delete attachments"
         )
     
     # Get attachments

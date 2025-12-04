@@ -107,6 +107,13 @@
             fetchCurrentUser().then(user => currentUser = user);
         }
 
+        // Khai báo biến trước khi sử dụng
+        const mediaInput = document.getElementById('projectMedia');
+        const mediaPreview = document.getElementById('mediaPreview');
+        const fileInput = document.getElementById('projectFiles');
+        const filePreview = document.getElementById('filePreview');
+        const submitButton = document.querySelector('#projectForm button[type="submit"]');
+
         document.getElementById('projectForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const user = currentUser || getCurrentUserProfile();
@@ -118,88 +125,113 @@
             const errorDiv = document.getElementById('errorMessage');
             errorDiv.style.display = 'none';
             
-            // Prepare deadline - convert date string to ISO format if provided
-            let deadline = null;
-            const deadlineInput = document.getElementById('deadline').value;
-            if (deadlineInput) {
-                // Convert date input (YYYY-MM-DD) to ISO datetime string
-                deadline = new Date(deadlineInput + 'T23:59:59').toISOString();
-            }
+            // Disable submit button và hiển thị loading
+            const originalButtonText = submitButton.innerHTML;
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang tạo dự án...';
             
-            // Validate required fields
-            const title = document.getElementById('title').value.trim();
-            const description = document.getElementById('description').value.trim();
-            const budgetValue = parseFloat(document.getElementById('budget').value);
-            
-            if (!title || !description || isNaN(budgetValue) || budgetValue <= 0) {
-                errorDiv.textContent = 'Vui lòng điền đầy đủ thông tin bắt buộc (Tiêu đề, Mô tả, Ngân sách).';
-                errorDiv.style.display = 'block';
-                return;
-            }
-            
-            const minimumLevelInput = document.getElementById('minimumLevel').value;
-            const minimumLevel = minimumLevelInput ? parseInt(minimumLevelInput) : null;
-            
-            // Convert budget_type to uppercase to match backend enum
-            const budgetTypeValue = document.getElementById('budgetType').value.toUpperCase();
-            
-            const formData = {
-                title: title,
-                description: description,
-                budget_type: budgetTypeValue, // "FIXED" or "HOURLY"
-                budget: budgetValue,
-                skills_required: document.getElementById('skills').value ? 
-                    document.getElementById('skills').value.split(',').map(s => s.trim()).filter(s => s) : [],
-                deadline: deadline,
-                category: document.getElementById('category').value || null,
-                tags: document.getElementById('tags').value ? 
-                    document.getElementById('tags').value.split(',').map(s => s.trim()).filter(s => s) : [],
-                minimum_badge: document.getElementById('minimumBadge').value || null,
-                minimum_level: minimumLevel,
-                attachments: [] // Empty array for now
-            };
+            try {
+                // Prepare deadline - convert date string to ISO format if provided
+                let deadline = null;
+                const deadlineInput = document.getElementById('deadline').value;
+                if (deadlineInput) {
+                    // Convert date input (YYYY-MM-DD) to ISO datetime string
+                    deadline = new Date(deadlineInput + 'T23:59:59').toISOString();
+                }
+                
+                // Validate required fields
+                const title = document.getElementById('title').value.trim();
+                const description = document.getElementById('description').value.trim();
+                const budgetValue = parseFloat(document.getElementById('budget').value);
+                
+                if (!title || !description || isNaN(budgetValue) || budgetValue <= 0) {
+                    errorDiv.textContent = 'Vui lòng điền đầy đủ thông tin bắt buộc (Tiêu đề, Mô tả, Ngân sách).';
+                    errorDiv.style.display = 'block';
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = originalButtonText;
+                    return;
+                }
+                
+                const minimumLevelInput = document.getElementById('minimumLevel').value;
+                const minimumLevel = minimumLevelInput ? parseInt(minimumLevelInput) : null;
+                
+                // Convert budget_type to uppercase to match backend enum
+                const budgetTypeValue = document.getElementById('budgetType').value.toUpperCase();
+                
+                const formData = {
+                    title: title,
+                    description: description,
+                    budget_type: budgetTypeValue, // "FIXED" or "HOURLY"
+                    budget: budgetValue,
+                    skills_required: document.getElementById('skills').value ? 
+                        document.getElementById('skills').value.split(',').map(s => s.trim()).filter(s => s) : [],
+                    deadline: deadline,
+                    category: document.getElementById('category').value || null,
+                    tags: document.getElementById('tags').value ? 
+                        document.getElementById('tags').value.split(',').map(s => s.trim()).filter(s => s) : [],
+                    minimum_badge: document.getElementById('minimumBadge').value || null,
+                    minimum_level: minimumLevel,
+                    attachments: [] // Empty array for now
+                };
 
-            console.log('Submitting project:', formData);
-            
-            const result = await createProject(formData);
-            if (result.success) {
-                try {
-                    const mediaFiles = mediaInput ? Array.from(mediaInput.files || []) : [];
-                    const otherFiles = fileInput ? Array.from(fileInput.files || []) : [];
-                    if (mediaFiles.length || otherFiles.length) {
-                        await uploadProjectAssets(result.data.id, mediaFiles, otherFiles);
+                console.log('Submitting project:', formData);
+                
+                // Bước 1: Tạo project
+                const result = await createProject(formData);
+                if (!result.success) {
+                    let errorMsg = 'Không thể tạo dự án. ';
+                    if (result.error) {
+                        if (typeof result.error === 'string') {
+                            errorMsg = result.error;
+                        } else if (typeof result.error === 'object') {
+                            errorMsg += JSON.stringify(result.error, null, 2);
+                        } else {
+                            errorMsg += String(result.error);
+                        }
+                    } else {
+                        errorMsg += 'Vui lòng kiểm tra lại thông tin.';
                     }
-                } catch (uploadError) {
-                    console.error('Upload initial media failed:', uploadError);
-                    alert('Dự án đã tạo nhưng một số tệp đính kèm không tải lên được. Bạn có thể thêm lại trong workspace.');
+                    errorDiv.textContent = errorMsg;
+                    errorDiv.style.display = 'block';
+                    console.error('Project creation failed:', result);
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = originalButtonText;
+                    return;
                 }
 
+                const projectId = result.data.id;
+                console.log('Project created successfully with ID:', projectId);
+
+                // Bước 2: Upload files nếu có
+                const mediaFiles = mediaInput ? Array.from(mediaInput.files || []) : [];
+                const otherFiles = fileInput ? Array.from(fileInput.files || []) : [];
+                
+                if (mediaFiles.length > 0 || otherFiles.length > 0) {
+                    submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang tải tệp đính kèm...';
+                    try {
+                        await uploadProjectAssets(projectId, mediaFiles, otherFiles);
+                        console.log('All files uploaded successfully');
+                    } catch (uploadError) {
+                        console.error('Upload files failed:', uploadError);
+                        // Vẫn cho phép redirect dù upload lỗi, nhưng thông báo cho user
+                        alert('Dự án đã tạo thành công, nhưng một số tệp đính kèm không tải lên được. Bạn có thể thêm lại trong workspace.');
+                    }
+                }
+
+                // Bước 3: Redirect sau khi hoàn tất
                 const redirectTarget = ensureFreelancerRole(user)
                     ? 'order_freelancer.html'
                     : 'orders.html';
                 window.location.href = `${redirectTarget}?created=true`;
-            } else {
-                let errorMsg = 'Không thể tạo dự án. ';
-                if (result.error) {
-                    if (typeof result.error === 'string') {
-                        errorMsg = result.error;
-                    } else if (typeof result.error === 'object') {
-                        errorMsg += JSON.stringify(result.error, null, 2);
-                    } else {
-                        errorMsg += String(result.error);
-                    }
-                } else {
-                    errorMsg += 'Vui lòng kiểm tra lại thông tin.';
-                }
-                errorDiv.textContent = errorMsg;
+                
+            } catch (error) {
+                console.error('Unexpected error:', error);
+                errorDiv.textContent = 'Đã xảy ra lỗi không mong muốn. Vui lòng thử lại.';
                 errorDiv.style.display = 'block';
-                console.error('Project creation failed:', result);
+                submitButton.disabled = false;
+                submitButton.innerHTML = originalButtonText;
             }
         });
-        const mediaInput = document.getElementById('projectMedia');
-        const mediaPreview = document.getElementById('mediaPreview');
-        const fileInput = document.getElementById('projectFiles');
-        const filePreview = document.getElementById('filePreview');
 
         const MAX_IMAGE_COUNT = 5;
         const MAX_VIDEO_COUNT = 1;
@@ -337,29 +369,74 @@
 
         async function uploadProjectAssets(projectId, mediaFiles = [], otherFiles = []) {
             const token = getToken();
-            if (!token) throw new Error('Missing token');
+            if (!token) {
+                throw new Error('Vui lòng đăng nhập để tải tệp lên');
+            }
 
             const uploadQueue = [...mediaFiles, ...otherFiles];
-            if (!uploadQueue.length) return;
+            if (!uploadQueue.length) {
+                console.log('No files to upload');
+                return;
+            }
 
-            for (const file of uploadQueue) {
+            console.log(`Starting upload of ${uploadQueue.length} file(s) for project ${projectId}`);
+
+            const uploadErrors = [];
+            
+            for (let i = 0; i < uploadQueue.length; i++) {
+                const file = uploadQueue[i];
+                const fileNumber = i + 1;
+                const totalFiles = uploadQueue.length;
+                
+                // Validate file size
                 if (file.size > MAX_FILE_SIZE_BYTES) {
-                    throw new Error(`Tệp ${file.name} vượt quá giới hạn 50MB.`);
+                    const errorMsg = `Tệp "${file.name}" vượt quá giới hạn 50MB.`;
+                    console.error(errorMsg);
+                    uploadErrors.push(errorMsg);
+                    continue; // Skip this file but continue with others
                 }
-                const form = new FormData();
-                form.append('file', file);
-                const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/attachments`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: form
-                });
-                if (!response.ok) {
-                    const error = await response.json().catch(() => ({}));
-                    throw new Error(error.detail || `Không thể tải tệp ${file.name}`);
+
+                try {
+                    console.log(`Uploading file ${fileNumber}/${totalFiles}: ${file.name} (${formatBytes(file.size)})`);
+                    
+                    const form = new FormData();
+                    form.append('file', file);
+                    
+                    const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/attachments`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: form
+                    });
+
+                    if (!response.ok) {
+                        let errorDetail = `HTTP ${response.status}`;
+                        try {
+                            const errorData = await response.json();
+                            errorDetail = errorData.detail || errorData.message || errorDetail;
+                        } catch (e) {
+                            errorDetail = await response.text().catch(() => errorDetail);
+                        }
+                        const errorMsg = `Không thể tải tệp "${file.name}": ${errorDetail}`;
+                        console.error(errorMsg);
+                        uploadErrors.push(errorMsg);
+                    } else {
+                        console.log(`✓ Successfully uploaded: ${file.name}`);
+                    }
+                } catch (error) {
+                    const errorMsg = `Lỗi khi tải tệp "${file.name}": ${error.message}`;
+                    console.error(errorMsg, error);
+                    uploadErrors.push(errorMsg);
                 }
             }
+
+            // Nếu có lỗi, throw để caller có thể xử lý
+            if (uploadErrors.length > 0) {
+                throw new Error(`Một số tệp không tải lên được:\n${uploadErrors.join('\n')}`);
+            }
+
+            console.log(`All ${uploadQueue.length} file(s) uploaded successfully`);
         }
     </script>
 </body>

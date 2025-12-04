@@ -27,6 +27,11 @@
                     <div><strong>Headline:</strong> <span id="userHeadline">--</span></div>
                     <div><strong>Member since:</strong> <span id="userCreatedAt">--</span></div>
                 </div>
+                <div id="editProfileBtnContainer" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                    <button class="btn btn-primary" id="editProfileBtn" style="width: 100%;">
+                        <i class="fas fa-edit"></i> Chỉnh sửa hồ sơ
+                    </button>
+                </div>
             </div>
 
             <div class="sidebar-card">
@@ -96,6 +101,65 @@
             </section>
         </section>
     </main>
+
+    <!-- Edit Profile Modal -->
+    <div id="editProfileModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
+            <header class="modal-header">
+                <h3>Chỉnh sửa hồ sơ</h3>
+                <button class="modal-close-btn" id="closeEditModalBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </header>
+            <form id="editProfileForm">
+                <div class="edit-profile-form-content">
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="editDisplayName">Tên hiển thị *</label>
+                            <input type="text" id="editDisplayName" required>
+                        </div>
+                        <div class="form-field">
+                            <label for="editHeadline">Tiêu đề (Headline)</label>
+                            <input type="text" id="editHeadline" placeholder="Ví dụ: Business Owner">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label for="editEmail">Email</label>
+                            <input type="email" id="editEmail">
+                        </div>
+                        <div class="form-field">
+                            <label for="editPhone">Số điện thoại</label>
+                            <input type="tel" id="editPhone" placeholder="Ví dụ: 0123456789">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-field full-width">
+                            <label for="editLocation">Vị trí</label>
+                            <input type="text" id="editLocation" placeholder="Ví dụ: Hồ Chí Minh, Việt Nam">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-field full-width">
+                            <label for="editBio">Giới thiệu (Bio)</label>
+                            <textarea id="editBio" rows="5" placeholder="Mô tả về bản thân..."></textarea>
+                        </div>
+                    </div>
+                    
+                    <div id="editProfileError" class="form-error"></div>
+                </div>
+                <footer class="modal-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelEditBtn">Hủy</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Lưu thay đổi
+                    </button>
+                </footer>
+            </form>
+        </div>
+    </div>
 
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>

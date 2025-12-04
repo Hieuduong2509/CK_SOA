@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đánh giá dự án - CodeDesign</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main class="page-container">
+        <header class="page-header">
+            <h1>Đánh giá Freelancer</h1>
+            <p>Hoàn tất đơn hàng của bạn bằng cách để lại đánh giá công khai cho freelancer.</p>
+        </header>
+
+        <section class="card">
+            <div id="reviewProjectInfo" class="review-project-info">
+                <p class="text-muted">Đang tải thông tin dự án...</p>
+            </div>
+            <hr>
+            <section class="review-form-section">
+                <h2>Đánh giá trải nghiệm</h2>
+                <div class="rating-stars" id="reviewPageStars">
+                    <span class="star" data-value="1">★</span>
+                    <span class="star" data-value="2">★</span>
+                    <span class="star" data-value="3">★</span>
+                    <span class="star" data-value="4">★</span>
+                    <span class="star" data-value="5">★</span>
+                </div>
+                <input type="hidden" id="reviewPageRatingValue" value="0">
+                <div class="form-group">
+                    <label for="reviewPageComment">Nhận xét chi tiết</label>
+                    <textarea id="reviewPageComment" rows="5" placeholder="Hãy mô tả chất lượng công việc, giao tiếp và tiến độ..."></textarea>
+                </div>
+                <p id="reviewPageError" class="form-error" style="display:none;"></p>
+                <button id="reviewSubmitBtn" class="btn btn-primary">
+                    <i class="fas fa-paper-plane"></i> Gửi đánh giá
+                </button>
+            </section>
+        </section>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/review_project.js"></script>
+</body>
+</html>
+
+

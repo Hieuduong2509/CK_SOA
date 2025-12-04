@@ -19,8 +19,15 @@ def hash_password(password: str) -> str:
     return pwd_context.hash(prehashed)
 
 # Database URLs
-AUTH_DB_URL = os.getenv("AUTH_DB_URL", "postgresql://postgres:postgres@localhost:5432/auth_db")
-MAIN_DB_URL = os.getenv("MAIN_DB_URL", "postgresql://postgres:postgres@localhost:5432/marketplace_db")
+# Prefer explicit envs; fall back to in-network Docker hostnames (not localhost)
+AUTH_DB_URL = os.getenv(
+    "AUTH_DB_URL",
+    "postgresql://postgres:postgres@postgres-auth:5432/auth_db",
+)
+MAIN_DB_URL = os.getenv(
+    "MAIN_DB_URL",
+    "postgresql://postgres:postgres@postgres-main:5432/marketplace_db",
+)
 
 def seed_auth_db():
     """Seed auth database with users"""

@@ -1,21 +1,110 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
-from models import Project, Bid, Milestone, MilestoneSubmission, ProjectStatus, BidStatus, MilestoneStatus
+from sqlalchemy import and_, or_, inspect, text
+from models import (
+    Project,
+    Bid,
+    Milestone,
+    MilestoneSubmission,
+    ProjectStatus,
+    ProjectType,
+    BudgetType,
+    BidStatus,
+    MilestoneStatus,
+    ProjectActivity,
+)
 from typing import Optional
+from datetime import datetime
+
+_activity_metadata_ready = False
 
 
-def create_project(db: Session, client_id: int, **kwargs):
-    # Remove status from kwargs if present - let model default handle it
-    # This ensures we use the enum value, not a string
-    if 'status' in kwargs:
-        del kwargs['status']
+def ensure_activity_metadata_column(engine):
+    global _activity_metadata_ready
+    if _activity_metadata_ready:
+        return
+    try:
+        inspector = inspect(engine)
+        columns = [col["name"] for col in inspector.get_columns("project_activities")]
+        if "metadata" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE project_activities ADD COLUMN metadata JSONB DEFAULT '{}'::jsonb"))
+        _activity_metadata_ready = True
+    except Exception as exc:
+        print(f"ensure_activity_metadata_column error: {exc}")
+
+
+def _coerce_project_status(status_value):
+    if status_value is None:
+        return ProjectStatus.PENDING_APPROVAL
+    if isinstance(status_value, ProjectStatus):
+        return status_value
+    return ProjectStatus(status_value)
+
+
+def _coerce_project_type(type_value):
+    if type_value is None:
+        return ProjectType.BIDDING
+    if isinstance(type_value, ProjectType):
+        return type_value
+    return ProjectType(type_value)
+
+
+def log_activity(db: Session, project_id: int, action_type: str, description: str, user_id: Optional[int] = None, metadata: Optional[dict] = None):
+    """Ghi log hoạt động của dự án
     
-    # Create project - status will use default from model (PENDING_APPROVAL)
-    # Explicitly set status to use the enum value
-    project = Project(client_id=client_id, status=ProjectStatus.PENDING_APPROVAL, **kwargs)
+    Args:
+        db: Database session
+        project_id: ID của project
+        action_type: Loại hành động (e.g., "project_created", "milestone_submitted")
+        description: Mô tả hành động
+        user_id: ID người thực hiện (optional)
+        metadata: Thông tin bổ sung như IP address, user agent (optional, quan trọng cho dispute resolution)
+    """
+    try:
+        ensure_activity_metadata_column(db.bind)
+    except Exception:
+        pass
+
+    activity = ProjectActivity(
+        project_id=project_id,
+        user_id=user_id,
+        action_type=action_type,
+        description=description,
+        activity_metadata=metadata or {}
+    )
+    db.add(activity)
+    return activity
+
+
+def create_project(
+    db: Session,
+    client_id: int,
+    status: ProjectStatus = ProjectStatus.PENDING_APPROVAL,
+    project_type: ProjectType = ProjectType.BIDDING,
+    **kwargs
+):
+    status_override = kwargs.pop("status", None)
+    type_override = kwargs.pop("project_type", None)
+    project_status = _coerce_project_status(status_override or status)
+    project_type = _coerce_project_type(type_override or project_type)
+
+    project = Project(
+        client_id=client_id,
+        status=project_status,
+        project_type=project_type,
+        **kwargs
+    )
     db.add(project)
     db.commit()
     db.refresh(project)
+
+    # Log activity
+    try:
+        log_activity(db, project.id, "project_created", f"Project '{project.title}' được tạo")
+        db.commit()
+    except Exception:
+        db.rollback()
+
     return project
 
 
@@ -49,7 +138,10 @@ def get_projects_by_client(db: Session, client_id: int):
 def get_projects_by_freelancer(db: Session, freelancer_id: int):
     bids = db.query(Bid).filter(Bid.freelancer_id == freelancer_id).all()
     project_ids = [bid.project_id for bid in bids]
-    return db.query(Project).filter(Project.id.in_(project_ids)).all()
+    filters = [Project.freelancer_id == freelancer_id]
+    if project_ids:
+        filters.append(Project.id.in_(project_ids))
+    return db.query(Project).filter(or_(*filters)).all()
 
 
 def create_bid(db: Session, project_id: int, freelancer_id: int, **kwargs):
@@ -83,7 +175,17 @@ def accept_bid(db: Session, project_id: int, bid_id: int):
     
     bid.status = BidStatus.ACCEPTED
     project.accepted_bid_id = bid_id
+    project.freelancer_id = bid.freelancer_id  # Set freelancer_id so workspace can find the freelancer
     project.status = ProjectStatus.IN_PROGRESS
+
+    # Log activity
+    log_activity(
+        db,
+        project.id,
+        "bid_accepted",
+        f"Đã chấp nhận đề xuất của freelancer #{bid.freelancer_id}",
+    )
+
     db.commit()
     db.refresh(project)
     return project
@@ -92,6 +194,15 @@ def accept_bid(db: Session, project_id: int, bid_id: int):
 def create_milestone(db: Session, project_id: int, **kwargs):
     milestone = Milestone(project_id=project_id, **kwargs)
     db.add(milestone)
+
+    # Log activity
+    log_activity(
+        db,
+        project_id,
+        "milestone_created",
+        f"Tạo milestone '{milestone.title}' với số tiền {milestone.amount}",
+    )
+
     db.commit()
     db.refresh(milestone)
     return milestone
@@ -116,6 +227,15 @@ def submit_milestone(db: Session, milestone_id: int, **kwargs):
     submission = MilestoneSubmission(milestone_id=milestone_id, version=version, **kwargs)
     db.add(submission)
     milestone.status = MilestoneStatus.SUBMITTED
+
+    # Log activity
+    log_activity(
+        db,
+        milestone.project_id,
+        "milestone_submitted",
+        f"Milestone '{milestone.title}' đã được nộp để duyệt",
+    )
+
     db.commit()
     db.refresh(submission)
     return submission
@@ -128,7 +248,17 @@ def approve_milestone(db: Session, milestone_id: int):
     
     milestone.status = MilestoneStatus.APPROVED
     from datetime import datetime
+
     milestone.approved_at = datetime.utcnow()
+
+    # Log activity
+    log_activity(
+        db,
+        milestone.project_id,
+        "milestone_approved",
+        f"Milestone '{milestone.title}' đã được khách hàng duyệt",
+    )
+
     db.commit()
     db.refresh(milestone)
     return milestone
@@ -140,6 +270,15 @@ def request_revision(db: Session, milestone_id: int):
         return None
     
     milestone.status = MilestoneStatus.IN_PROGRESS
+
+    # Log activity
+    log_activity(
+        db,
+        milestone.project_id,
+        "milestone_revision_requested",
+        f"Khách hàng yêu cầu chỉnh sửa milestone '{milestone.title}'",
+    )
+
     db.commit()
     db.refresh(milestone)
     return milestone
@@ -151,9 +290,27 @@ def close_project(db: Session, project_id: int):
         return None
     
     project.status = ProjectStatus.COMPLETED
+
+    # Log activity
+    log_activity(
+        db,
+        project.id,
+        "project_closed",
+        f"Dự án đã được đánh dấu hoàn thành",
+    )
+
     db.commit()
     db.refresh(project)
     return project
+
+
+def get_project_activities(db: Session, project_id: int):
+    return (
+        db.query(ProjectActivity)
+        .filter(ProjectActivity.project_id == project_id)
+        .order_by(ProjectActivity.created_at.desc())
+        .all()
+    )
 
 
 def approve_project(db: Session, project_id: int):
@@ -183,5 +340,145 @@ def delete_project(db: Session, project_id: int):
     
     db.delete(project)
     db.commit()
+    return project
+
+
+def deliver_project(db: Session, project_id: int, file_urls: list = None, description: str = None, user_id: Optional[int] = None, metadata: Optional[dict] = None):
+    """Deliver GIG_ORDER project - change status from IN_PROGRESS to DELIVERED"""
+    project = get_project(db, project_id)
+    if not project:
+        return None
+    
+    # Only allow for GIG_ORDER projects
+    if project.project_type != ProjectType.GIG_ORDER:
+        return None
+    
+    # Only allow if status is IN_PROGRESS
+    if project.status != ProjectStatus.IN_PROGRESS:
+        return None
+    
+    # Update project status
+    project.status = ProjectStatus.DELIVERED
+    
+    # Update attachments if files provided
+    if file_urls:
+        current_attachments = project.attachments or []
+        # Add new files to attachments
+        for file_url in file_urls:
+            current_attachments.append({
+                "url": file_url,
+                "uploaded_at": datetime.utcnow().isoformat(),
+                "uploaded_by": user_id
+            })
+        project.attachments = current_attachments
+    
+    # Update milestone if exists (for GIG_ORDER, there's usually one milestone)
+    milestones = get_milestones(db, project_id)
+    if milestones:
+        milestone = milestones[0]  # GIG_ORDER typically has one milestone
+        milestone.status = MilestoneStatus.SUBMITTED
+        # Create submission if files provided
+        if file_urls:
+            latest_submission = db.query(MilestoneSubmission).filter(
+                MilestoneSubmission.milestone_id == milestone.id
+            ).order_by(MilestoneSubmission.version.desc()).first()
+            version = (latest_submission.version + 1) if latest_submission else 1
+            
+            submission = MilestoneSubmission(
+                milestone_id=milestone.id,
+                version=version,
+                description=description,
+                file_urls=file_urls
+            )
+            db.add(submission)
+    
+    # Log activity
+    log_activity(
+        db,
+        project.id,
+        "project_delivered",
+        f"Freelancer đã giao hàng cho dự án '{project.title}'",
+        user_id=user_id,
+        metadata=metadata
+    )
+    
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+def request_revision_project(db: Session, project_id: int, reason: str = None, user_id: Optional[int] = None, metadata: Optional[dict] = None):
+    """Request revision for GIG_ORDER project - change status from DELIVERED back to IN_PROGRESS"""
+    project = get_project(db, project_id)
+    if not project:
+        return None
+    
+    # Only allow for GIG_ORDER projects
+    if project.project_type != ProjectType.GIG_ORDER:
+        return None
+    
+    # Only allow if status is DELIVERED
+    if project.status != ProjectStatus.DELIVERED:
+        return None
+    
+    # Update project status
+    project.status = ProjectStatus.IN_PROGRESS
+    
+    # Update milestone status
+    milestones = get_milestones(db, project_id)
+    if milestones:
+        milestone = milestones[0]
+        milestone.status = MilestoneStatus.IN_PROGRESS
+    
+    # Log activity
+    log_activity(
+        db,
+        project.id,
+        "project_revision_requested",
+        f"Khách hàng yêu cầu chỉnh sửa lại. Lý do: {reason or 'Không có lý do cụ thể'}",
+        user_id=user_id,
+        metadata=metadata
+    )
+    
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+def accept_delivery(db: Session, project_id: int, user_id: Optional[int] = None, metadata: Optional[dict] = None):
+    """Accept delivery for GIG_ORDER project - change status from DELIVERED to COMPLETED"""
+    project = get_project(db, project_id)
+    if not project:
+        return None
+    
+    # Only allow for GIG_ORDER projects
+    if project.project_type != ProjectType.GIG_ORDER:
+        return None
+    
+    # Only allow if status is DELIVERED
+    if project.status != ProjectStatus.DELIVERED:
+        return None
+    
+    # Update project status
+    project.status = ProjectStatus.COMPLETED
+    
+    # Update milestone status
+    milestones = get_milestones(db, project_id)
+    if milestones:
+        milestone = milestones[0]
+        milestone.status = MilestoneStatus.APPROVED
+    
+    # Log activity
+    log_activity(
+        db,
+        project.id,
+        "project_delivery_accepted",
+        f"Khách hàng đã chấp nhận giao hàng cho dự án '{project.title}'",
+        user_id=user_id,
+        metadata=metadata
+    )
+    
+    db.commit()
+    db.refresh(project)
     return project
 

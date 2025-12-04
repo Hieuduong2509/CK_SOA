@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from models import Base
 import os
@@ -19,4 +19,31 @@ def get_db():
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        conn.execute(text("""
+            ALTER TABLE projects
+                ADD COLUMN IF NOT EXISTS freelancer_id INTEGER;
+        """))
+        conn.execute(text("""
+            ALTER TABLE projects
+                ADD COLUMN IF NOT EXISTS project_type VARCHAR(50) DEFAULT 'BIDDING';
+        """))
+        conn.execute(text("""
+            ALTER TABLE projects
+                ADD COLUMN IF NOT EXISTS service_package_id INTEGER;
+        """))
+        conn.execute(text("""
+            ALTER TABLE projects
+                ADD COLUMN IF NOT EXISTS requirements_answers JSONB DEFAULT '[]'::jsonb;
+        """))
+        conn.execute(text("""
+            ALTER TABLE projects
+                ADD COLUMN IF NOT EXISTS service_snapshot JSONB;
+        """))
+        conn.execute(text("""
+            UPDATE projects
+            SET project_type = 'BIDDING'
+            WHERE project_type IS NULL;
+        """))
+        conn.commit()
 

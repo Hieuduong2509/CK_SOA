@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thanh toán dịch vụ - CodeDesign Marketplace</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="navbar-root"></div>
+
+    <main class="service-checkout-page">
+        <div class="container checkout-layout">
+            <section class="checkout-main-card">
+                <header class="checkout-header">
+                    <div>
+                        <p class="eyebrow">Thanh toán an toàn</p>
+                        <h1 id="checkoutServiceTitle">Đang tải gói dịch vụ...</h1>
+                        <p id="checkoutServiceSubtitle" class="text-muted"></p>
+                    </div>
+                    <span id="checkoutServiceBadge" class="service-badge">Gói dịch vụ</span>
+                </header>
+
+                <div id="checkoutGallery" class="checkout-gallery">
+                    <div class="empty-state small">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Đang tải ảnh...</p>
+                    </div>
+                </div>
+
+                <section class="checkout-details">
+                    <h2>Thông tin gói</h2>
+                    <dl id="checkoutMeta" class="checkout-meta-grid"></dl>
+                    <article class="checkout-description" id="checkoutDescription"></article>
+                </section>
+
+                <!-- Requirements Form Section -->
+                <section id="requirementsSection" class="checkout-requirements" style="display: none;">
+                    <h2>Yêu cầu bổ sung</h2>
+                    <p class="text-muted" style="margin-bottom: 1.5rem;">Vui lòng trả lời các câu hỏi sau để freelancer có thể bắt đầu công việc tốt hơn.</p>
+                    <form id="requirementsForm" class="requirements-form"></form>
+                </section>
+            </section>
+
+            <aside class="checkout-side-panel">
+                <section class="checkout-summary-card">
+                    <div class="summary-price-row">
+                        <div>
+                            <p class="text-muted">Tổng thanh toán</p>
+                            <h2 id="checkoutPrice">--</h2>
+                        </div>
+                        <span class="summary-delivery" id="checkoutDelivery">-- ngày</span>
+                    </div>
+                    <div class="summary-freelancer" id="checkoutFreelancer">
+                        <img alt="Freelancer avatar">
+                        <div>
+                            <strong>Freelancer</strong>
+                            <p class="text-muted">Đang tải...</p>
+                        </div>
+                    </div>
+                    <ul class="summary-list" id="checkoutExtras"></ul>
+                    <p id="checkoutError" class="form-error" style="display: none;"></p>
+                    <button id="payNowBtn" class="btn btn-primary btn-block">
+                        <i class="fas fa-shield-check"></i> Thanh toán & tạo đơn hàng
+                    </button>
+                    <p class="text-muted small">
+                        Bấm thanh toán nghĩa là bạn đồng ý điều khoản của CodeDesign Marketplace.
+                        Thanh toán demo sẽ tự động thành công và tạo đơn hàng ngay lập tức.
+                    </p>
+                </section>
+            </aside>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navbar.js"></script>
+    <script src="js/service_order.js"></script>
+    <script src="js/service_checkout.js"></script>
+</body>
+</html>
+

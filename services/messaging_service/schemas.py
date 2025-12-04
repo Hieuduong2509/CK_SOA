@@ -28,6 +28,8 @@ class ConversationResponse(BaseModel):
     participant2_id: int
     last_message_at: Optional[datetime]
     created_at: datetime
+    unread_count: int = 0
+    last_message: Optional[MessageResponse] = None
 
     class Config:
         from_attributes = True

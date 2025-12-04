@@ -2,7 +2,8 @@
 var API_BASE = window.API_BASE || window.location.origin;
 
 const adminState = {
-    currentPanel: 'projects'
+    currentPanel: 'projects',
+    pendingServices: []
 };
 
 const ACCOUNT_ROLES = ['client', 'freelancer'];
@@ -20,10 +21,10 @@ async function initAdminDashboard() {
 
     await Promise.allSettled([
         loadPendingProjects(),
+        loadPendingServices(),
         loadAccounts('client'),
         loadAccounts('freelancer'),
-        loadDisputes(),
-        loadAnalytics()
+        loadComplaints()
     ]);
 }
 
@@ -87,10 +88,10 @@ function switchPanel(panelName) {
 
 function bindRefreshButtons() {
     document.getElementById('refreshProjectsBtn')?.addEventListener('click', loadPendingProjects);
+    document.getElementById('refreshServicesBtn')?.addEventListener('click', loadPendingServices);
     document.getElementById('refreshClientAccountsBtn')?.addEventListener('click', () => loadAccounts('client'));
     document.getElementById('refreshFreelancerAccountsBtn')?.addEventListener('click', () => loadAccounts('freelancer'));
-    document.getElementById('refreshDisputesBtn')?.addEventListener('click', loadDisputes);
-    document.getElementById('refreshAnalyticsBtn')?.addEventListener('click', loadAnalytics);
+    document.getElementById('refreshComplaintsBtn')?.addEventListener('click', loadComplaints);
 }
 
 async function fetchJson(path, options = {}) {
@@ -151,6 +152,150 @@ async function loadPendingProjects() {
     } catch (error) {
         console.error('loadPendingProjects', error);
         tbody.innerHTML = `<tr><td colspan="6" class="text-danger">Không thể tải dữ liệu: ${error.message}</td></tr>`;
+    }
+}
+
+async function loadPendingServices() {
+    const tbody = document.getElementById('pendingServicesBody');
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="6" class="text-muted">Đang tải dữ liệu...</td></tr>`;
+    try {
+        const services = await fetchJson('/api/v1/admin/pending-services');
+        adminState.pendingServices = services || [];
+        if (!services.length) {
+            tbody.innerHTML = `<tr><td colspan="6" class="text-muted">Không có gói nào chờ duyệt.</td></tr>`;
+            return;
+        }
+        tbody.innerHTML = services.map(renderServiceRow).join('');
+    } catch (error) {
+        console.error('loadPendingServices', error);
+        tbody.innerHTML = `<tr><td colspan="6" class="text-danger">Không thể tải gói: ${error.message}</td></tr>`;
+    }
+}
+
+function renderServiceRow(service) {
+    const freelancer = service.profile ? `${service.profile.display_name || 'Freelancer'} (#${service.profile.user_id})` : 'N/A';
+    return `
+        <tr>
+            <td>#${service.id}</td>
+            <td>
+                <strong>${service.name}</strong>
+                <div class="text-muted" style="font-size:0.85rem;">${service.category || 'Không có danh mục'}</div>
+            </td>
+            <td>${formatCurrency(service.price)}</td>
+            <td>${freelancer}</td>
+            <td>${formatDateTime(service.created_at)}</td>
+            <td class="table-actions">
+                <div class="action-button-group">
+                    <button class="btn btn-secondary btn-small" onclick="viewServiceDetail(${service.id})">
+                        <i class="fas fa-eye"></i> Xem
+                    </button>
+                    <button class="btn btn-success btn-small" onclick="approveService(${service.id})">
+                        <i class="fas fa-check"></i> Duyệt
+                    </button>
+                    <button class="btn btn-danger btn-small" onclick="rejectService(${service.id})">
+                        <i class="fas fa-times"></i> Từ chối
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+function findServiceById(serviceId) {
+    return adminState.pendingServices.find(item => item.id === serviceId);
+}
+
+function viewServiceDetail(serviceId) {
+    const service = findServiceById(serviceId);
+    if (!service) return;
+    const modal = document.getElementById('serviceDetailModal');
+    const body = document.getElementById('serviceDetailBody');
+    if (!modal || !body) return;
+    const gallery = (service.gallery || []).map(url => `<img src="${url}" alt="Ảnh minh họa" class="service-gallery-thumb">`).join('');
+    const requirements = (service.requirements || []).map(req => req.label || req.question || JSON.stringify(req));
+    const deliverables = service.deliverables || [];
+
+    body.innerHTML = `
+        <section class="service-detail-grid">
+            <article class="detail-card">
+                <p class="detail-label">Tên gói</p>
+                <p class="detail-value">${service.name}</p>
+            </article>
+            <article class="detail-card">
+                <p class="detail-label">Freelancer</p>
+                <p class="detail-value">${service.profile?.display_name || 'N/A'} <span class="text-muted">#${service.profile?.user_id || '---'}</span></p>
+            </article>
+            <article class="detail-card">
+                <p class="detail-label">Giá</p>
+                <p class="detail-value highlight">${formatCurrency(service.price)}</p>
+            </article>
+            <article class="detail-card">
+                <p class="detail-label">Thời gian giao</p>
+                <p class="detail-value">${service.delivery_days || 0} ngày</p>
+            </article>
+        </section>
+        <section class="detail-section">
+            <header>
+                <h4>Mô tả</h4>
+            </header>
+            <div class="service-description">${service.description || 'Chưa có mô tả'}</div>
+        </section>
+        ${deliverables.length ? `
+            <section class="detail-section">
+                <header><h4>Deliverables</h4></header>
+                <ul class="service-detail-list">
+                    ${deliverables.map(item => `<li>${item}</li>`).join('')}
+                </ul>
+            </section>
+        ` : ''}
+        ${requirements.length ? `
+            <section class="detail-section">
+                <header><h4>Yêu cầu khách hàng</h4></header>
+                <ul class="service-detail-list">
+                    ${requirements.map(item => `<li>${item}</li>`).join('')}
+                </ul>
+            </section>
+        ` : ''}
+        ${gallery ? `
+            <section class="detail-section">
+                <header><h4>Thư viện</h4></header>
+                <div class="service-gallery">${gallery}</div>
+            </section>
+        ` : ''}
+    `;
+    modal.style.display = 'flex';
+}
+
+function closeServiceModal() {
+    const modal = document.getElementById('serviceDetailModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function approveService(serviceId) {
+    if (!confirm('Duyệt và xuất bản gói dịch vụ này?')) return;
+    try {
+        await fetchJson(`/api/v1/admin/services/${serviceId}/approve`, { method: 'POST' });
+        closeServiceModal();
+        loadPendingServices();
+    } catch (error) {
+        alert(`Không thể duyệt gói: ${error.message}`);
+    }
+}
+
+async function rejectService(serviceId) {
+    const reason = prompt('Nhập lý do từ chối (tùy chọn):');
+    try {
+        await fetchJson(`/api/v1/admin/services/${serviceId}/reject`, {
+            method: 'POST',
+            body: JSON.stringify({ reason })
+        });
+        closeServiceModal();
+        loadPendingServices();
+    } catch (error) {
+        alert(`Không thể từ chối gói: ${error.message}`);
     }
 }
 
@@ -312,21 +457,66 @@ async function deleteUser(userId, role) {
     }
 }
 
-async function loadDisputes() {
-    const container = document.getElementById('disputesList');
+async function loadComplaints() {
+    await Promise.all([
+        loadComplaintsUsers('client', 'complaintsClientList'),
+        loadComplaintsUsers('freelancer', 'complaintsFreelancerList')
+    ]);
+}
+
+async function loadComplaintsUsers(role, containerId) {
+    const container = document.getElementById(containerId);
     if (!container) return;
     container.innerHTML = `<div class="empty-state">Đang tải dữ liệu...</div>`;
     try {
-        const disputes = await fetchJson('/api/v1/admin/disputes');
-        if (!disputes.length) {
-            container.innerHTML = `<div class="empty-state">Không có tranh chấp nào đang mở.</div>`;
+        const users = await fetchJson(`/api/v1/admin/users?role=${role}`);
+        if (!users.length) {
+            container.innerHTML = `<div class="empty-state">Không có tài khoản nào.</div>`;
             return;
         }
-        container.innerHTML = disputes.map(renderDisputeCard).join('');
+        container.innerHTML = users.map(user => renderComplaintsUserCard(user, role)).join('');
     } catch (error) {
-        console.error('loadDisputes', error);
-        container.innerHTML = `<div class="empty-state text-danger">Không thể tải tranh chấp: ${error.message}</div>`;
+        console.error('loadComplaintsUsers', error);
+        container.innerHTML = `<div class="empty-state text-danger">Lỗi tải dữ liệu: ${error.message}</div>`;
     }
+}
+
+function renderComplaintsUserCard(user, role) {
+    const badges = [];
+    if (user.is_banned) {
+        badges.push('<span class="account-status-badge danger">Đã khóa</span>');
+    }
+    if (user.suspended_until) {
+        badges.push(`<span class="account-status-badge warning">Tạm khóa đến ${formatDateTime(user.suspended_until)}</span>`);
+    }
+    if (!user.is_verified) {
+        badges.push('<span class="account-status-badge">Chưa xác minh</span>');
+    }
+    return `
+        <article class="admin-user-card">
+            <h4>${user.name || 'Người dùng'} <span class="text-muted">#${user.id}</span></h4>
+            <p><i class="fas fa-envelope"></i> ${user.email}</p>
+            ${user.phone ? `<p><i class="fas fa-phone"></i> ${user.phone}</p>` : ''}
+            ${user.headline ? `<p>${user.headline}</p>` : ''}
+            <p class="text-muted">Tạo ngày: ${formatDateTime(user.created_at)}</p>
+            ${badges.length ? `<div class="account-status-badges">${badges.join('')}</div>` : ''}
+            <footer>
+                <button class="btn btn-primary btn-small" onclick="viewUserComplaints(${user.id}, '${role}')" style="width: 100%;">
+                    <i class="fas fa-eye"></i> Xem chi tiết
+                </button>
+            </footer>
+        </article>
+    `;
+}
+
+function viewUserComplaints(userId, role) {
+    window.location.href = `admin_user_detail.html?user_id=${userId}&role=${role}`;
+}
+
+// Keep old dispute functions for backward compatibility
+async function loadDisputes() {
+    // Redirect to complaints view
+    loadComplaints();
 }
 
 function renderDisputeCard(dispute) {
@@ -365,36 +555,13 @@ async function resolveDispute(disputeId, action) {
     }
 }
 
-async function loadAnalytics() {
-    const grid = document.getElementById('analyticsGrid');
-    if (!grid) return;
-    grid.innerHTML = `<div class="empty-state">Đang tải dữ liệu...</div>`;
-    try {
-        const stats = await fetchJson('/api/v1/analytics/summary');
-        grid.innerHTML = `
-            <div class="analytics-card">
-                <h4>Tổng người dùng</h4>
-                <div class="value">${stats.total_users || 0}</div>
-            </div>
-            <div class="analytics-card">
-                <h4>Tổng dự án</h4>
-                <div class="value">${stats.total_projects || 0}</div>
-            </div>
-            <div class="analytics-card">
-                <h4>Doanh thu</h4>
-                <div class="value" style="color: var(--success-color);">
-                    ${formatCurrency(stats.total_revenue || 0)}
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        console.error('loadAnalytics', error);
-        grid.innerHTML = `<div class="empty-state text-danger">Không thể tải thống kê: ${error.message}</div>`;
-    }
-}
 
 window.approvePendingProject = approvePendingProject;
 window.deleteProject = deleteProject;
+window.viewServiceDetail = viewServiceDetail;
+window.closeServiceModal = closeServiceModal;
+window.approveService = approveService;
+window.rejectService = rejectService;
 window.resolveDispute = resolveDispute;
 window.suspendUser = suspendUser;
 window.unsuspendUser = unsuspendUser;

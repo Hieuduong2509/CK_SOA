@@ -47,6 +47,12 @@ var API_BASE = window.API_BASE || window.location.origin;
         summaryEl.joined.textContent = (user.created_at || '').split('T')[0] || '—';
         summaryEl.avatar.textContent = initialsFromName(user.name);
         overviewInput.value = profileData.bio || '';
+        
+        // Setup edit button
+        const editBtn = document.getElementById('editProfileBtn');
+        if (editBtn) {
+            editBtn.onclick = () => openEditProfileModal(user, profileData);
+        }
     }
 
     function renderStats(profileData, favorites) {
@@ -212,6 +218,141 @@ var API_BASE = window.API_BASE || window.location.origin;
             }
         });
     }
+
+    // Edit Profile Functions
+    function openEditProfileModal(user, profileData) {
+        const modal = document.getElementById('editProfileModal');
+        if (!modal) return;
+        
+        // Fill form with current data
+        document.getElementById('editDisplayName').value = profileData?.display_name || user?.name || '';
+        document.getElementById('editHeadline').value = profileData?.headline || user?.headline || '';
+        document.getElementById('editEmail').value = profileData?.email || user?.email || '';
+        document.getElementById('editPhone').value = profileData?.phone || user?.phone || '';
+        document.getElementById('editLocation').value = profileData?.location || '';
+        document.getElementById('editBio').value = profileData?.bio || '';
+        
+        // Hide error
+        const errorDiv = document.getElementById('editProfileError');
+        if (errorDiv) {
+            errorDiv.textContent = '';
+            errorDiv.style.display = 'none';
+        }
+        
+        modal.style.display = 'flex';
+    }
+
+    function closeEditProfileModal() {
+        const modal = document.getElementById('editProfileModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    async function saveProfileChanges() {
+        if (!currentUser) return;
+        
+        const token = getToken();
+        if (!token) {
+            alert('Vui lòng đăng nhập lại');
+            return;
+        }
+        
+        // Collect form data
+        const payload = {
+            display_name: document.getElementById('editDisplayName').value.trim(),
+            headline: document.getElementById('editHeadline').value.trim() || null,
+            email: document.getElementById('editEmail').value.trim() || null,
+            phone: document.getElementById('editPhone').value.trim() || null,
+            location: document.getElementById('editLocation').value.trim() || null,
+            bio: document.getElementById('editBio').value.trim() || null,
+        };
+        
+        // Remove null values
+        Object.keys(payload).forEach(key => {
+            if (payload[key] === null || payload[key] === '') {
+                delete payload[key];
+            }
+        });
+        
+        const errorDiv = document.getElementById('editProfileError');
+        const submitBtn = document.querySelector('#editProfileForm button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        
+        try {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang lưu...';
+            
+            const response = await fetch(`${API_BASE}/api/v1/users/${currentUser.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+            });
+            
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.detail || 'Không thể cập nhật hồ sơ');
+            }
+            
+            const updatedProfile = await response.json();
+            
+            // Reload page data
+            await loadPage();
+            
+            // Close modal
+            closeEditProfileModal();
+            
+            // Show success message
+            alert('Đã cập nhật hồ sơ thành công!');
+            
+        } catch (error) {
+            console.error('saveProfileChanges error:', error);
+            if (errorDiv) {
+                errorDiv.textContent = error.message || 'Có lỗi xảy ra khi lưu thay đổi';
+                errorDiv.style.display = 'block';
+                // Scroll to error
+                errorDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } else {
+                alert('Lỗi: ' + (error.message || 'Không thể cập nhật hồ sơ'));
+            }
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    }
+
+    // Setup modal event listeners
+    document.addEventListener('DOMContentLoaded', () => {
+        const modal = document.getElementById('editProfileModal');
+        if (modal) {
+            const closeBtn = document.getElementById('closeEditModalBtn');
+            const cancelBtn = document.getElementById('cancelEditBtn');
+            const form = document.getElementById('editProfileForm');
+            
+            if (closeBtn) {
+                closeBtn.addEventListener('click', closeEditProfileModal);
+            }
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', closeEditProfileModal);
+            }
+            if (form) {
+                form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    saveProfileChanges();
+                });
+            }
+            
+            // Close on overlay click
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    closeEditProfileModal();
+                }
+            });
+        }
+    });
 
     document.addEventListener('DOMContentLoaded', loadPage);
 })();

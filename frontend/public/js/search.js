@@ -10,7 +10,7 @@ async function searchFreelancers(query, filters = {}) {
     if (!hasQuery && !hasFilters) {
         // Load all freelancers directly
         try {
-            const response = await fetch(`${API_BASE}/api/v1/users?limit=100`);
+            const response = await fetch(`${API_BASE}/api/v1/users?limit=100&sort=recent`);
             if (response.ok) {
                 const freelancers = await response.json();
                 console.log('Loaded all freelancers:', freelancers.length);

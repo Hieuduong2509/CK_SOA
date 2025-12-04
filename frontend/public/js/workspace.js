@@ -5,11 +5,53 @@ let conversationId = null;
 let currentProject = null;
 let currentUser = null;
 let currentProjectId = null;
+let currentFreelancerId = null;
+let currentFreelancerProfile = null;
+let hasSubmittedReview = false;
+const profileCache = {};
+
+function ensureProjectActionList() {
+    const actionsDiv = document.getElementById('projectActions');
+    if (!actionsDiv) return null;
+    let actionList = actionsDiv.querySelector('.project-action-list');
+    if (!actionList) {
+        actionList = document.createElement('div');
+        actionList.className = 'project-action-list';
+        actionList.style.display = 'flex';
+        actionList.style.flexDirection = 'column';
+        actionList.style.gap = '0.75rem';
+        actionsDiv.appendChild(actionList);
+    }
+    return { actionsDiv, actionList };
+}
 const workspaceAttachmentState = {};
 
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'avif'];
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v'];
 const MEDIA_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"><rect width="800" height="600" fill="%23f3f4f6"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%236b7280" font-family="Arial" font-size="32">Preview</text></svg>';
+async function fetchUserProfile(userId) {
+    if (!userId) return null;
+    if (profileCache[userId]) {
+        return profileCache[userId];
+    }
+    try {
+        const headers = {};
+        const token = (typeof getToken === 'function' && getToken()) || localStorage.getItem('access_token');
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        const response = await fetch(`${API_BASE}/api/v1/users/${userId}`, { headers });
+        if (!response.ok) {
+            return null;
+        }
+        const profile = await response.json();
+        profileCache[userId] = profile;
+        return profile;
+    } catch (error) {
+        console.error('fetchUserProfile error', error);
+        return null;
+    }
+}
 
 function normalizeAttachmentsList(rawAttachments) {
     if (!rawAttachments || !Array.isArray(rawAttachments)) {
@@ -43,6 +85,33 @@ function getAttachmentExtension(attachment) {
 function getAttachmentUrl(attachment) {
     if (!attachment) return '';
     return attachment.url || attachment.preview_url || attachment.download_url || attachment.presigned_url || '';
+}
+
+// Helper: chọn icon cho file theo extension
+function getFileIconMeta(filename) {
+    if (!filename) {
+        return { icon: 'fas fa-file', colorClass: 'file-icon-generic text-blue' };
+    }
+    const ext = filename.split('.').pop().toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'avif'].includes(ext)) {
+        return { icon: 'fas fa-file-image', colorClass: 'file-icon-image text-purple' };
+    }
+    if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v'].includes(ext)) {
+        return { icon: 'fas fa-file-video', colorClass: 'file-icon-video text-indigo' };
+    }
+    if (['pdf'].includes(ext)) {
+        return { icon: 'fas fa-file-pdf', colorClass: 'file-icon-pdf text-red' };
+    }
+    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+        return { icon: 'fas fa-file-archive', colorClass: 'file-icon-archive text-amber' };
+    }
+    if (['doc', 'docx'].includes(ext)) {
+        return { icon: 'fas fa-file-word', colorClass: 'file-icon-doc text-blue' };
+    }
+    if (['xls', 'xlsx', 'csv'].includes(ext)) {
+        return { icon: 'fas fa-file-excel', colorClass: 'file-icon-sheet text-green' };
+    }
+    return { icon: 'fas fa-file', colorClass: 'file-icon-generic text-blue' };
 }
 
 function isImageAttachment(attachment) {
@@ -123,10 +192,40 @@ function switchTab(tabName) {
         loadMilestones(currentProjectId);
     } else if (tabName === 'files' && currentProjectId) {
         loadProjectFiles(currentProjectId);
+    } else if (tabName === 'activity' && currentProjectId) {
+        loadProjectActivities(currentProjectId);
     }
 }
 // Expose immediately
 window.switchTab = switchTab;
+
+// Helper function to get user role
+function getUserRole(user) {
+    if (!user || !user.role) return null;
+    let role = user.role;
+    if (typeof role === 'object' && role.value) {
+        role = role.value;
+    } else if (typeof role === 'object' && role.name) {
+        role = role.name;
+    }
+    return String(role).toLowerCase();
+}
+
+// Helper function to check if user is freelancer
+function isFreelancer(user) {
+    return getUserRole(user) === 'freelancer';
+}
+
+// Helper function to check if user is client/owner
+function isClient(user, project) {
+    if (!user || !project) return false;
+    const role = getUserRole(user);
+    if (role === 'client') {
+        // Check if user is the owner of the project
+        return user.id === project.client_id;
+    }
+    return false;
+}
 
 // Main function to load workspace
 async function loadWorkspace(projectId) {
@@ -141,31 +240,492 @@ async function loadWorkspace(projectId) {
     // Load project details
     currentProject = await getProject(projectId);
     if (currentProject) {
+        // For bidding projects, check accepted_bid_id to get freelancer_id
+        if (currentProject.freelancer_id) {
+            currentFreelancerId = currentProject.freelancer_id;
+            currentFreelancerProfile = await fetchUserProfile(currentFreelancerId);
+        } else if (currentProject.accepted_bid_id) {
+            // Fetch bids to get freelancer_id from accepted bid
+            try {
+                const token = localStorage.getItem('access_token');
+                const bidsResponse = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+                if (bidsResponse.ok) {
+                    const bids = await bidsResponse.json();
+                    const acceptedBid = bids.find(b => b.id === currentProject.accepted_bid_id);
+                    if (acceptedBid) {
+                        currentFreelancerId = acceptedBid.freelancer_id;
+                        currentFreelancerProfile = await fetchUserProfile(currentFreelancerId);
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching accepted bid:', error);
+            }
+        } else {
+            currentFreelancerProfile = null;
+        }
         // Update project header
         document.getElementById('projectTitle').textContent = currentProject.title;
         document.getElementById('projectDescription').textContent = currentProject.description || 'Không có mô tả';
         
-        // Load project details tab
-        loadProjectDetails(currentProject);
-
-        // Prefill media showcase as soon as project data có sẵn
-        preloadWorkspaceShowcase(currentProject, projectId);
+        // Check user role and adjust UI accordingly
+        const userIsFreelancer = isFreelancer(currentUser);
+        const userIsClient = isClient(currentUser, currentProject);
+        // For bidding projects, check if user is the freelancer from accepted bid
+        const isProjectFreelancer = userIsFreelancer && (
+            currentProject.freelancer_id === currentUser.id || 
+            (currentProject.accepted_bid_id && currentFreelancerId === currentUser.id)
+        );
+        
+        if (userIsClient || isProjectFreelancer) {
+            // Participant view (client & assigned freelancer): full workspace + chat
+            setupParticipantView();
+            // Load project details tab
+            await loadProjectDetails(currentProject);
+            // Load initial tab content
+            loadBidders(projectId);
+            loadMilestones(projectId);
+            loadProjectFiles(projectId);
+            // Start conversation and connect WebSocket
+            await initializeChat(projectId);
+            if (userIsClient) {
+                setupReviewControls();
+                maybeShowReviewButton();
+                setupDeliveryControlsForClient();
+            } else if (isProjectFreelancer) {
+                setupDeliveryControlsForFreelancer();
+            }
+        } else if (userIsFreelancer) {
+            // Freelancer khác (không phải freelancer được chọn) chỉ xem media
+            setupFreelancerView();
+            preloadWorkspaceShowcase(currentProject, projectId);
+        } else {
+            // Unauthorized or unknown role
+            alert('Bạn không có quyền truy cập workspace này.');
+            window.location.href = 'index.html';
+            return;
+        }
     }
+}
 
-    // Load initial tab content
-    loadBidders(projectId);
-    loadMilestones(projectId);
-    loadProjectFiles(projectId);
+// Setup freelancer view - only show media showcase
+function setupFreelancerView() {
+    // Hide chat container
+    const chatContainer = document.getElementById('chatContainer');
+    if (chatContainer) {
+        chatContainer.style.display = 'none';
+    }
+    
+    // Hide control panel wrapper (sidebar with tabs)
+    const controlPanelWrapper = document.getElementById('controlPanelWrapper');
+    if (controlPanelWrapper) {
+        controlPanelWrapper.style.display = 'none';
+    }
+    
+    // Adjust grid layout to full width for media showcase
+    const mainGrid = document.getElementById('workspaceMainGrid');
+    if (mainGrid) {
+        mainGrid.style.gridTemplateColumns = '1fr';
+    }
+    
+    // Make media showcase full width
+    const showcaseWrapper = document.getElementById('workspaceShowcaseWrapper');
+    if (showcaseWrapper) {
+        showcaseWrapper.style.maxWidth = '100%';
+    }
+}
 
-    // Start conversation and connect WebSocket
-    await initializeChat(projectId);
+// Setup participant view (client + assigned freelancer) - show full workspace
+function setupParticipantView() {
+    // Show chat container
+    const chatContainer = document.getElementById('chatContainer');
+    if (chatContainer) {
+        chatContainer.style.display = 'flex';
+    }
+    
+    // Show control panel wrapper
+    const controlPanelWrapper = document.getElementById('controlPanelWrapper');
+    if (controlPanelWrapper) {
+        controlPanelWrapper.style.display = 'block';
+    }
+    
+    // Restore grid layout
+    const mainGrid = document.getElementById('workspaceMainGrid');
+    if (mainGrid) {
+        mainGrid.style.gridTemplateColumns = '1fr 400px';
+    }
 }
 // Expose immediately
 window.loadWorkspace = loadWorkspace;
 
+function setupReviewControls() {
+    const starsContainer = document.getElementById('ratingStars');
+    if (!starsContainer) return;
+    const stars = starsContainer.querySelectorAll('.star');
+    stars.forEach(function (star) {
+        star.addEventListener('click', function () {
+            const value = this.getAttribute('data-value');
+            const ratingInput = document.getElementById('ratingValue');
+            if (ratingInput) {
+                ratingInput.value = value;
+            }
+            stars.forEach(function (s) {
+                const sVal = s.getAttribute('data-value');
+                s.style.color = Number(sVal) <= Number(value) ? '#F59E0B' : '#d1d5db';
+            });
+        });
+    });
+}
+
+function maybeShowReviewButton() {
+    if (!currentUser || !currentProject || hasSubmittedReview) return;
+    const userIsClient = isClient(currentUser, currentProject);
+    if (!userIsClient) return;
+    const status = String(currentProject.status || '').toUpperCase();
+    const containers = ensureProjectActionList();
+    if (!containers) return;
+    const { actionsDiv, actionList } = containers;
+    
+    if (status === 'COMPLETED') {
+        if (actionsDiv.dataset.hasReviewLink === 'true') return;
+        actionsDiv.dataset.hasReviewLink = 'true';
+        actionList.insertAdjacentHTML('beforeend', `
+            <button class="btn btn-primary" type="button" onclick="goToReviewPage()">
+                <i class="fas fa-star"></i> Đánh giá Freelancer
+            </button>
+        `);
+        return;
+    }
+    
+    if (actionsDiv.dataset.hasCompleteButton === 'true') return;
+    actionsDiv.dataset.hasCompleteButton = 'true';
+    actionList.insertAdjacentHTML('beforeend', `
+        <button class="btn btn-success" type="button" onclick="completeProjectAndReview()">
+            <i class="fas fa-check-circle"></i> Hoàn thành & Đánh giá
+        </button>
+    `);
+}
+
+function openReviewModal() {
+    const modal = document.getElementById('reviewModal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+}
+
+function closeReviewModal() {
+    const modal = document.getElementById('reviewModal');
+    if (!modal) return;
+    modal.style.display = 'none';
+}
+
+function goToReviewPage() {
+    if (!currentProject || !currentProject.id) return;
+    const params = new URLSearchParams();
+    params.set('project_id', currentProject.id);
+    if (currentFreelancerId) {
+        params.set('freelancer_id', currentFreelancerId);
+    }
+    window.location.href = `review_project.html?${params.toString()}`;
+}
+
+async function submitReview() {
+    alert('Bạn sẽ được chuyển đến trang đánh giá riêng cho dự án này.');
+    goToReviewPage();
+}
+
+window.openReviewModal = openReviewModal;
+window.closeReviewModal = closeReviewModal;
+window.submitReview = submitReview;
+window.goToReviewPage = goToReviewPage;
+
+async function completeProjectAndReview() {
+    if (!currentProject || !currentProject.id) return;
+    if (currentProject.deadline) {
+        const deadline = new Date(currentProject.deadline);
+        const now = new Date();
+        if (deadline > now) {
+            const proceedEarly = confirm('Dự án vẫn chưa đến hạn theo kế hoạch. Bạn vẫn muốn đánh dấu hoàn thành sớm?');
+            if (!proceedEarly) {
+                return;
+            }
+        }
+    }
+    if (!confirm('Xác nhận hoàn thành và kết thúc dự án này?')) return;
+    const token = getToken ? getToken() : localStorage.getItem('access_token');
+    if (!token) {
+        alert('Vui lòng đăng nhập để thực hiện thao tác này.');
+        return;
+    }
+    try {
+        const resp = await fetch(`${API_BASE}/api/v1/projects/${currentProject.id}/close`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(function () { return {}; });
+            alert(err.detail || 'Không thể hoàn thành dự án.');
+            return;
+        }
+        goToReviewPage();
+    } catch (e) {
+        console.error('completeProjectAndReview error', e);
+        alert('Không thể hoàn thành dự án ngay lúc này.');
+    }
+}
+
+window.completeProjectAndReview = completeProjectAndReview;
+
+// Delivery Flow for GIG_ORDER
+function setupDeliveryControlsForFreelancer() {
+    if (!currentProject || !currentUser) return;
+    const projectType = String(currentProject.project_type || '').toUpperCase();
+    const status = String(currentProject.status || '').toUpperCase();
+    
+    // Only show for GIG_ORDER projects in IN_PROGRESS status
+    if (projectType !== 'GIG_ORDER' || status !== 'IN_PROGRESS') return;
+    
+    const containers = ensureProjectActionList();
+    if (!containers) return;
+    const { actionsDiv, actionList } = containers;
+    if (actionsDiv.dataset.hasDeliverButton === 'true') return;
+    actionsDiv.dataset.hasDeliverButton = 'true';
+    
+    actionList.insertAdjacentHTML('beforeend', `
+        <button class="btn btn-primary btn-large" type="button" onclick="openDeliverModal()" style="width: 100%; padding: 1rem; font-size: 1.125rem;">
+            <i class="fas fa-paper-plane"></i> Giao hàng ngay
+        </button>
+    `);
+}
+
+function setupDeliveryControlsForClient() {
+    if (!currentProject || !currentUser) return;
+    const projectType = String(currentProject.project_type || '').toUpperCase();
+    const status = String(currentProject.status || '').toUpperCase();
+    
+    // Only show for GIG_ORDER projects in DELIVERED status
+    if (projectType !== 'GIG_ORDER' || status !== 'DELIVERED') return;
+    
+    const containers = ensureProjectActionList();
+    if (!containers) return;
+    const { actionsDiv, actionList } = containers;
+    if (actionsDiv.dataset.hasDeliveryActions === 'true') return;
+    actionsDiv.dataset.hasDeliveryActions = 'true';
+    
+    actionList.insertAdjacentHTML('beforeend', `
+        <div style="display: flex; gap: 0.75rem; flex-direction: column;">
+            <button class="btn btn-success btn-large" type="button" onclick="acceptDelivery()" style="width: 100%; padding: 1rem; font-size: 1.125rem;">
+                <i class="fas fa-check-circle"></i> Chấp nhận giao hàng
+            </button>
+            <button class="btn btn-warning" type="button" onclick="openRequestRevisionModal()" style="width: 100%;">
+                <i class="fas fa-redo"></i> Yêu cầu sửa lại
+            </button>
+        </div>
+    `);
+}
+
+function openDeliverModal() {
+    const modal = document.getElementById('deliverModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        document.getElementById('deliverDescription').value = '';
+        document.getElementById('deliverFiles').value = '';
+    }
+}
+
+function closeDeliverModal() {
+    const modal = document.getElementById('deliverModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function submitDelivery() {
+    if (!currentProject || !currentProjectId) {
+        alert('Không tìm thấy thông tin dự án.');
+        return;
+    }
+    
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        alert('Vui lòng đăng nhập lại.');
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    const description = document.getElementById('deliverDescription').value.trim();
+    const fileInput = document.getElementById('deliverFiles');
+    const files = fileInput.files;
+    
+    if (files.length === 0) {
+        const confirmNoFiles = confirm('Bạn chưa chọn file nào. Bạn có chắc muốn giao hàng mà không có file đính kèm?');
+        if (!confirmNoFiles) return;
+    }
+    
+    const submitBtn = document.querySelector('#deliverModal .btn-primary');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xử lý...';
+    
+    try {
+        const formData = new FormData();
+        if (description) {
+            formData.append('description', description);
+        }
+        for (let i = 0; i < files.length; i++) {
+            formData.append('files', files[i]);
+        }
+        
+        const response = await fetch(`${API_BASE}/api/v1/projects/${currentProjectId}/deliver`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || 'Không thể giao hàng. Vui lòng thử lại.');
+        }
+        
+        const updatedProject = await response.json();
+        alert('Giao hàng thành công! Khách hàng sẽ được thông báo để xem xét.');
+        closeDeliverModal();
+        
+        // Reload workspace
+        await loadWorkspace(currentProjectId);
+    } catch (error) {
+        console.error('submitDelivery error', error);
+        alert('Lỗi: ' + (error.message || 'Không thể giao hàng. Vui lòng thử lại.'));
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+}
+
+function openRequestRevisionModal() {
+    const modal = document.getElementById('requestRevisionModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        document.getElementById('revisionReason').value = '';
+    }
+}
+
+function closeRequestRevisionModal() {
+    const modal = document.getElementById('requestRevisionModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function submitRevisionRequest() {
+    if (!currentProject || !currentProjectId) {
+        alert('Không tìm thấy thông tin dự án.');
+        return;
+    }
+    
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        alert('Vui lòng đăng nhập lại.');
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    const reason = document.getElementById('revisionReason').value.trim();
+    if (!reason) {
+        alert('Vui lòng nhập lý do yêu cầu chỉnh sửa.');
+        return;
+    }
+    
+    const submitBtn = document.querySelector('#requestRevisionModal .btn-warning');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xử lý...';
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/v1/projects/${currentProjectId}/request-revision`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason: reason })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || 'Không thể yêu cầu chỉnh sửa. Vui lòng thử lại.');
+        }
+        
+        const updatedProject = await response.json();
+        alert('Yêu cầu chỉnh sửa đã được gửi. Freelancer sẽ được thông báo.');
+        closeRequestRevisionModal();
+        
+        // Reload workspace
+        await loadWorkspace(currentProjectId);
+    } catch (error) {
+        console.error('submitRevisionRequest error', error);
+        alert('Lỗi: ' + (error.message || 'Không thể yêu cầu chỉnh sửa. Vui lòng thử lại.'));
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+}
+
+async function acceptDelivery() {
+    if (!currentProject || !currentProjectId) {
+        alert('Không tìm thấy thông tin dự án.');
+        return;
+    }
+    
+    const confirmAccept = confirm('Bạn có chắc chắn muốn chấp nhận giao hàng này? Sau khi chấp nhận, dự án sẽ được đánh dấu hoàn thành và thanh toán sẽ được giải phóng.');
+    if (!confirmAccept) return;
+    
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        alert('Vui lòng đăng nhập lại.');
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/v1/projects/${currentProjectId}/accept-delivery`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || 'Không thể chấp nhận giao hàng. Vui lòng thử lại.');
+        }
+        
+        const updatedProject = await response.json();
+        alert('Chấp nhận giao hàng thành công! Dự án đã được đánh dấu hoàn thành.');
+        
+        // Reload workspace
+        await loadWorkspace(currentProjectId);
+    } catch (error) {
+        console.error('acceptDelivery error', error);
+        alert('Lỗi: ' + (error.message || 'Không thể chấp nhận giao hàng. Vui lòng thử lại.'));
+    }
+}
+
+// Expose functions
+window.openDeliverModal = openDeliverModal;
+window.closeDeliverModal = closeDeliverModal;
+window.submitDelivery = submitDelivery;
+window.openRequestRevisionModal = openRequestRevisionModal;
+window.closeRequestRevisionModal = closeRequestRevisionModal;
+window.submitRevisionRequest = submitRevisionRequest;
+window.acceptDelivery = acceptDelivery;
+
 // Load project details
-function loadProjectDetails(project) {
+async function loadProjectDetails(project) {
     const detailsDiv = document.getElementById('projectDetails');
+    const assignmentBlock = await renderFreelancerAssignment(project);
     detailsDiv.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 1rem;">
             <div>
@@ -217,8 +777,175 @@ function loadProjectDetails(project) {
                     </div>
                 </div>
             ` : ''}
+            ${assignmentBlock}
+            <div id="projectActions" style="margin-top: 1.5rem;"></div>
         </div>
     `;
+
+    // Load and display requirements for freelancer
+    loadProjectRequirements(project);
+}
+
+async function renderFreelancerAssignment(project) {
+    let freelancerId = currentFreelancerId || project.freelancer_id || (project.service_snapshot && project.service_snapshot.freelancer && project.service_snapshot.freelancer.id);
+    
+    // For bidding projects, if no freelancer_id but has accepted_bid_id, fetch from bids
+    if (!freelancerId && project.accepted_bid_id) {
+        try {
+            const token = localStorage.getItem('access_token');
+            const bidsResponse = await fetch(`${API_BASE}/api/v1/projects/${project.id}/bids`, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
+            if (bidsResponse.ok) {
+                const bids = await bidsResponse.json();
+                const acceptedBid = bids.find(b => b.id === project.accepted_bid_id);
+                if (acceptedBid) {
+                    freelancerId = acceptedBid.freelancer_id;
+                    if (!currentFreelancerProfile) {
+                        currentFreelancerProfile = await fetchUserProfile(freelancerId);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching accepted bid for freelancer assignment:', error);
+        }
+    }
+    
+    const snapshotFreelancer = (project.service_snapshot && project.service_snapshot.freelancer) || {};
+    const profile = currentFreelancerProfile || snapshotFreelancer || {};
+
+    if (!freelancerId) {
+        return `
+            <div style="border: 1px dashed var(--border-color); border-radius: var(--radius-xl); padding: 1.25rem; background: var(--bg-gray);">
+                <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
+                    <i class="fas fa-user-clock" style="color: var(--warning-color); margin-right: 0.5rem;"></i>
+                    Chưa có freelancer nào được giao
+                </h4>
+                <p style="margin: 0; color: var(--text-secondary);">Vui lòng duyệt một freelancer trong tab Ứng viên để bắt đầu dự án.</p>
+            </div>
+        `;
+    }
+
+    const name = profile.display_name || profile.name || snapshotFreelancer.name || `Freelancer #${freelancerId}`;
+    const headline = profile.headline || snapshotFreelancer.headline || 'Freelancer đang thực hiện dự án này.';
+    const avatar = profile.avatar_url || snapshotFreelancer.avatar || `https://ui-avatars.com/api/?background=random&name=${encodeURIComponent(name)}`;
+    const rating = typeof profile.rating === 'number' ? profile.rating.toFixed(1) : (snapshotFreelancer.rating ? Number(snapshotFreelancer.rating).toFixed(1) : '—');
+    const experience = profile.experience_level || snapshotFreelancer.experience_level || 'Đang cập nhật';
+
+    return `
+        <div style="border: 1px solid var(--border-color); border-radius: var(--radius-2xl); padding: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <img src="${avatar}" alt="${name}" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 2px solid var(--bg-gray);">
+                    <div>
+                        <p style="margin: 0; font-size: 0.825rem; color: var(--text-secondary); text-transform: uppercase;">Freelancer phụ trách</p>
+                        <h3 style="margin: 0; font-size: 1.25rem;">${name}</h3>
+                        <p style="margin: 0.25rem 0 0 0; color: var(--text-secondary); font-size: 0.95rem;">${headline}</p>
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">Trạng thái dự án</p>
+                    <strong style="font-size: 1.05rem;">${formatProjectStatusLabel(project.status)}</strong>
+                </div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
+                <div style="flex: 1;">
+                    <p style="margin: 0; font-size: 0.825rem; color: var(--text-secondary); text-transform: uppercase;">Đánh giá</p>
+                    <p style="margin: 0.25rem 0 0 0; font-size: 1.25rem; color: var(--primary-color); font-weight: 600;">
+                        <i class="fas fa-star"></i> ${rating}
+                    </p>
+                </div>
+                <div style="flex: 1;">
+                    <p style="margin: 0; font-size: 0.825rem; color: var(--text-secondary); text-transform: uppercase;">Kinh nghiệm</p>
+                    <p style="margin: 0.25rem 0 0 0; font-size: 1rem;">${experience}</p>
+                </div>
+                <div style="flex: 1; display: flex; align-items: flex-end; justify-content: flex-end; gap: 0.5rem;">
+                    <a class="btn btn-secondary btn-small" href="freelancer_profile.html?id=${freelancerId}" target="_blank">
+                        <i class="fas fa-user"></i> Xem hồ sơ
+                    </a>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function formatProjectStatusLabel(status) {
+    const normalized = String(status || '').toUpperCase();
+    const map = {
+        'PENDING_APPROVAL': 'Đang chờ duyệt',
+        'OPEN': 'Đang tìm freelancer',
+        'IN_PROGRESS': 'Đang thực hiện',
+        'DELIVERED': 'Đã giao hàng',
+        'COMPLETED': 'Đã hoàn thành',
+        'CANCELLED': 'Đã hủy',
+        'DISPUTED': 'Tranh chấp'
+    };
+    return map[normalized] || normalized || 'Không xác định';
+}
+
+// Load and display project requirements (for freelancer to view client answers)
+function loadProjectRequirements(project) {
+    const requirementsSection = document.getElementById('projectRequirements');
+    const requirementsDisplay = document.getElementById('requirementsDisplay');
+    if (!requirementsSection || !requirementsDisplay) return;
+
+    // Only show for freelancer (not client)
+    const user = currentUser || getCurrentUserProfile();
+    const userIsFreelancer = user && isFreelancer(user) && project.freelancer_id === user.id;
+    
+    if (!userIsFreelancer) {
+        requirementsSection.style.display = 'none';
+        return;
+    }
+
+    const requirementsAnswers = project.requirements_answers || [];
+    if (!requirementsAnswers || requirementsAnswers.length === 0) {
+        requirementsSection.style.display = 'none';
+        return;
+    }
+
+    requirementsSection.style.display = 'block';
+    requirementsDisplay.innerHTML = requirementsAnswers.map((req, index) => {
+        let answerHtml = '';
+        if (Array.isArray(req.answer)) {
+            // Checkbox answers (multiple)
+            answerHtml = `
+                <ul style="margin: 0.5rem 0 0 0; padding-left: 1.5rem; color: var(--text-primary);">
+                    ${req.answer.map(ans => `<li>${escapeHtml(ans)}</li>`).join('')}
+                </ul>
+            `;
+        } else {
+            // Text/textarea/select answers (single)
+            answerHtml = `
+                <p style="margin: 0.5rem 0 0 0; color: var(--text-primary); padding: 0.75rem; background: var(--bg-gray); border-radius: var(--radius-md); white-space: pre-wrap;">
+                    ${escapeHtml(req.answer || 'Chưa có câu trả lời')}
+                </p>
+            `;
+        }
+
+        return `
+            <div class="requirement-display-item" style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-color);">
+                <div style="display: flex; align-items: start; gap: 0.75rem;">
+                    <div style="flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; background: var(--primary-color); color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.875rem;">
+                        ${index + 1}
+                    </div>
+                    <div style="flex: 1;">
+                        <h4 style="margin: 0 0 0.5rem 0; font-size: 1rem; color: var(--text-primary); font-weight: 500;">
+                            ${escapeHtml(req.question || `Câu hỏi ${index + 1}`)}
+                        </h4>
+                        ${answerHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('') || '<p class="text-muted">Chưa có yêu cầu nào từ khách hàng.</p>';
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function preloadWorkspaceShowcase(project, projectIdOverride) {
@@ -294,6 +1021,14 @@ async function loadBidders(projectId) {
 
         // Fetch project to check status
         const project = currentProject || await getProject(projectId);
+
+        // If project has accepted bid, determine freelancer id
+        if (!currentFreelancerId && project && project.accepted_bid_id) {
+            const acceptedBid = bids.find(b => b.id === project.accepted_bid_id);
+            if (acceptedBid) {
+                currentFreelancerId = acceptedBid.freelancer_id;
+            }
+        }
 
         if (bids.length === 0) {
             biddersList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Chưa có ai apply cho dự án này.</p>';
@@ -414,41 +1149,14 @@ async function startChatWithBidder(freelancerId, projectId) {
 // Expose immediately
 window.startChatWithBidder = startChatWithBidder;
 
-// Accept bid
+// Accept bid - redirect to payment page
 async function acceptBid(projectId, bidId) {
-    if (!confirm('Bạn có chắc chắn muốn duyệt người apply này không?')) {
+    if (!confirm('Bạn có chắc chắn muốn duyệt người apply này không? Bạn sẽ được chuyển đến trang thanh toán.')) {
         return;
     }
 
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-
-    try {
-        const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/accept`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ bid_id: bidId })
-        });
-
-        if (response.ok) {
-            alert('Đã duyệt thành công! Dự án đã được chuyển sang trạng thái "Đang thực hiện".');
-            // Reload bidders and milestones
-            loadBidders(projectId);
-            loadMilestones(projectId);
-            // Reload project
-            currentProject = await getProject(projectId);
-            loadProjectDetails(currentProject);
-        } else {
-            const error = await response.json();
-            alert(error.detail || 'Không thể duyệt. Vui lòng thử lại.');
-        }
-    } catch (error) {
-        console.error('Error accepting bid:', error);
-        alert('Có lỗi xảy ra khi duyệt.');
-    }
+    // Redirect to payment page with project_id and bid_id
+    window.location.href = `payment.html?project_id=${projectId}&bid_id=${bidId}`;
 }
 // Expose immediately
 window.acceptBid = acceptBid;
@@ -457,40 +1165,87 @@ window.acceptBid = acceptBid;
 async function initializeChat(projectId) {
     try {
         const token = localStorage.getItem('access_token');
-        if (!token) return;
+        if (!token) {
+            console.warn('No token available for chat');
+            return;
+        }
 
-        // Get project to find freelancer_id
+        // Get project to find the other participant
         const project = currentProject || await getProject(projectId);
-        if (!project) return;
+        if (!project) {
+            console.warn('Project not found for chat initialization');
+            return;
+        }
 
-        // Try to find existing conversation or start new one
-        // For now, we'll try to start a conversation with the accepted freelancer
-        const freelancerId = project.accepted_bid_id ? 
-            (await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            }).then(r => r.json()).then(bids => {
-                const acceptedBid = bids.find(b => b.id === project.accepted_bid_id);
-                return acceptedBid ? acceptedBid.freelancer_id : undefined;
-            })) : null;
+        // Determine current user role
+        const userIsClient = isClient(currentUser, project);
+        const userIsFreelancer = isFreelancer(currentUser);
+        
+        let participant2Id = null;
 
-        if (freelancerId) {
-            const response = await fetch(`${API_BASE}/api/v1/chat/start`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    participant2_id: freelancerId,
-                    project_id: projectId
-                })
-            });
-            if (response.ok) {
-                const conversation = await response.json();
-                conversationId = conversation.id;
-                connectWebSocket(conversationId);
-                loadMessages(conversationId);
+        if (userIsClient) {
+            // Client needs to chat with freelancer
+            // Find freelancer_id: check direct assignment first, then accepted bid
+            participant2Id = project.freelancer_id || currentFreelancerId;
+            
+            if (!participant2Id && project.accepted_bid_id) {
+                try {
+                    const bidsResponse = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (bidsResponse.ok) {
+                        const bids = await bidsResponse.json();
+                        const acceptedBid = bids.find(b => b.id === project.accepted_bid_id);
+                        if (acceptedBid) {
+                            participant2Id = acceptedBid.freelancer_id;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error fetching bids for chat:', error);
+                }
             }
+        } else if (userIsFreelancer) {
+            // Freelancer needs to chat with client (project owner)
+            participant2Id = project.client_id;
+        }
+
+        if (!participant2Id) {
+            console.warn('No participant found for chat initialization', {
+                userIsClient,
+                userIsFreelancer,
+                projectUserId: project.user_id,
+                projectOwnerId: project.owner_id,
+                projectFreelancerId: project.freelancer_id
+            });
+            return;
+        }
+
+        // Get or create conversation
+        const response = await fetch(`${API_BASE}/api/v1/chat/start`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                participant2_id: participant2Id,
+                project_id: projectId
+            })
+        });
+        
+        if (response.ok) {
+            const conversation = await response.json();
+            conversationId = conversation.id;
+            connectWebSocket(conversationId, token);
+            loadMessages(conversationId);
+            console.log('Chat initialized successfully', {
+                conversationId,
+                participant2Id,
+                userRole: userIsClient ? 'client' : 'freelancer'
+            });
+        } else {
+            const error = await response.json().catch(() => ({}));
+            console.error('Error starting conversation:', error);
         }
     } catch (error) {
         console.error('Error initializing chat:', error);
@@ -498,78 +1253,240 @@ async function initializeChat(projectId) {
 }
 
 // Connect WebSocket
-function connectWebSocket(convId) {
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}/ws/${convId}`;
+function connectWebSocket(convId, token) {
+    if (!convId || !token) {
+        console.error('Missing conversation ID or token for WebSocket');
+        return;
+    }
+
+    // Build WebSocket URL (same format as messages.js)
+    const base = API_BASE.replace(/^http/i, API_BASE.startsWith('https') ? 'wss' : 'ws');
+    const normalized = base.endsWith('/') ? base.slice(0, -1) : base;
+    const wsUrl = `${normalized}/api/v1/chat/ws/${convId}?token=${encodeURIComponent(token)}`;
     
+    // Close existing connection if any
     if (ws) {
+        ws.onclose = null; // Prevent reconnect loop
         ws.close();
+        ws = null;
     }
     
-    ws = new WebSocket(wsUrl);
+    try {
+        ws = new WebSocket(wsUrl);
 
-    ws.onopen = () => {
-        console.log('WebSocket connected');
-    };
+        ws.onopen = () => {
+            console.log('Workspace WebSocket connected for conversation', convId);
+        };
 
-    ws.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        displayMessage(message);
-    };
+        ws.onmessage = (event) => {
+            try {
+                if (!event || !event.data) {
+                    console.warn('WebSocket message missing data');
+                    return;
+                }
+                
+                // Skip if data is not a string (might be from extension interference)
+                if (typeof event.data !== 'string') {
+                    console.warn('WebSocket message data is not a string, skipping');
+                    return;
+                }
+                
+                const data = JSON.parse(event.data);
+                
+                // Validate message structure
+                if (!data || typeof data !== 'object') {
+                    console.warn('WebSocket message invalid structure');
+                    return;
+                }
+                
+                // Handle different message formats
+                if (data.type === 'message' && data.message && typeof data.message === 'object') {
+                    // Validate message object
+                    if (data.message.content !== undefined && data.message.sender_id !== undefined) {
+                        displayMessage(data.message);
+                    }
+                } else if (data.id && data.content !== undefined && data.sender_id !== undefined) {
+                    // Direct message object - validate required fields
+                    displayMessage(data);
+                } else {
+                    console.warn('WebSocket message invalid format:', data);
+                }
+            } catch (error) {
+                // Silently ignore errors from external extensions
+                if (error && error.message && !error.message.includes('payload')) {
+                    console.error('Error parsing WebSocket message:', error);
+                }
+            }
+        };
 
-    ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-    };
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
 
-    ws.onclose = () => {
-        console.log('WebSocket closed');
-    };
+        ws.onclose = (event) => {
+            console.log('Workspace WebSocket closed', event.code, event.reason);
+            ws = null;
+        };
+    } catch (error) {
+        console.error('Error creating WebSocket:', error);
+        ws = null;
+    }
 }
+
+// Track displayed messages to prevent duplicates
+const displayedMessageIds = new Set();
 
 // Display message with chat bubbles
 function displayMessage(message) {
-    const messagesList = document.getElementById('messagesList');
-    if (!messagesList) return;
+    try {
+        if (!message || typeof message !== 'object') {
+            console.warn('displayMessage: invalid message object');
+            return;
+        }
+        
+        // Validate required fields
+        if (message.sender_id === undefined || message.content === undefined) {
+            console.warn('displayMessage: message missing required fields', message);
+            return;
+        }
+        
+        const messagesList = document.getElementById('messagesList');
+        if (!messagesList) {
+            console.warn('messagesList element not found');
+            return;
+        }
 
-    const isCurrentUser = currentUser && message.sender_id === currentUser.id;
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'message-bubble';
-    messageDiv.style.cssText = `
-        display: flex;
-        flex-direction: column;
-        align-items: ${isCurrentUser ? 'flex-end' : 'flex-start'};
-        margin-bottom: 0.75rem;
-    `;
+        const isCurrentUser = currentUser && message.sender_id === currentUser.id;
+        
+        // Generate unique message identifier
+        const messageId = message.id ? String(message.id) : null;
+        const messageContent = String(message.content || '').trim();
+        const messageSenderId = String(message.sender_id || '');
+        const messageCreatedAt = message.created_at || new Date().toISOString();
+        
+        // Check if message already exists (avoid duplicates)
+        // Check by ID first
+        if (messageId) {
+            const existingById = messagesList.querySelector(`[data-message-id="${messageId}"]`);
+            if (existingById) {
+                // Update existing message if it's a temp message being replaced
+                if (existingById.hasAttribute('data-temp-message')) {
+                    existingById.removeAttribute('data-temp-message');
+                    existingById.setAttribute('data-message-id', messageId);
+                    // Update content if needed
+                    const contentDiv = existingById.querySelector('div[style*="word-wrap"]');
+                    if (contentDiv && contentDiv.textContent !== messageContent) {
+                        contentDiv.textContent = messageContent;
+                    }
+                }
+                return; // Message already displayed
+            }
+            
+            // Also check in our tracking set
+            if (displayedMessageIds.has(messageId)) {
+                return; // Already processed
+            }
+        }
+        
+        // For temp messages or messages without ID, check by content + sender + time
+        const allMessages = messagesList.querySelectorAll('.workspace-message-row');
+        for (const msgEl of allMessages) {
+            const msgContent = (msgEl.querySelector('div[style*="word-wrap"]')?.textContent || '').trim();
+            const msgSender = msgEl.getAttribute('data-sender-id') || '';
+            const msgTime = msgEl.getAttribute('data-created-at') || '';
+            const msgId = msgEl.getAttribute('data-message-id') || '';
+            
+            // Skip if checking against itself
+            if (messageId && msgId === messageId) {
+                continue;
+            }
+            
+            // Check for duplicate: same content, same sender, similar time
+            if (msgContent === messageContent && 
+                msgSender === messageSenderId &&
+                Math.abs(new Date(msgTime || 0).getTime() - new Date(messageCreatedAt).getTime()) < 5000) {
+                return; // Duplicate found
+            }
+        }
 
-    const bubbleStyle = isCurrentUser ? `
-        background: var(--primary-color);
-        color: white;
-        border-radius: 1rem 1rem 0.25rem 1rem;
-        max-width: 70%;
-    ` : `
-        background: var(--bg-gray);
-        color: var(--text-primary);
-        border-radius: 1rem 1rem 1rem 0.25rem;
-        max-width: 70%;
-    `;
+        // Mark as displayed
+        if (messageId) {
+            displayedMessageIds.add(messageId);
+        }
 
-    const time = new Date(message.created_at || Date.now()).toLocaleTimeString('vi-VN', {
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'workspace-message-row';
+        if (messageId) {
+            messageDiv.setAttribute('data-message-id', messageId);
+        } else {
+            messageDiv.setAttribute('data-temp-message', 'true');
+            messageDiv.setAttribute('data-message-id', `temp_${Date.now()}_${Math.random()}`);
+        }
+        messageDiv.setAttribute('data-sender-id', messageSenderId);
+        messageDiv.setAttribute('data-created-at', messageCreatedAt);
+        messageDiv.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            align-items: ${isCurrentUser ? 'flex-end' : 'flex-start'};
+            margin-bottom: 0.75rem;
+            width: 100%;
+            padding: 0;
+        `;
 
-    messageDiv.innerHTML = `
-        <div style="${bubbleStyle} padding: 0.75rem 1rem; box-shadow: var(--shadow-sm);">
-            ${!isCurrentUser ? `<div style="font-size: 0.75rem; font-weight: 600; margin-bottom: 0.25rem; opacity: 0.9;">User ${message.sender_id}</div>` : ''}
-            <div style="word-wrap: break-word; white-space: pre-wrap;">${message.content || ''}</div>
-        </div>
-        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; padding: 0 0.5rem;">
-            ${time}
-        </div>
-    `;
+        const bubbleStyle = isCurrentUser ? `
+            background: linear-gradient(135deg, var(--primary-color) 0%, #6a82fb 100%);
+            color: white;
+            border-radius: 1rem 1rem 0.25rem 1rem;
+            max-width: 80%;
+            min-width: 60px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            margin-left: auto;
+            margin-right: 0;
+        ` : `
+            background: #f1f3f5;
+            color: #1a202c;
+            border-radius: 1rem 1rem 1rem 0.25rem;
+            max-width: 80%;
+            min-width: 60px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            margin-left: 0;
+            margin-right: auto;
+        `;
 
-    messagesList.appendChild(messageDiv);
-    messagesList.scrollTop = messagesList.scrollHeight;
+        const time = new Date(messageCreatedAt).toLocaleTimeString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        messageDiv.innerHTML = `
+            <div style="${bubbleStyle} padding: 0.75rem 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: inline-block;">
+                <div style="word-wrap: break-word; white-space: pre-wrap; line-height: 1.5; margin: 0;">${escapeHtml(messageContent)}</div>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; padding: 0 0.75rem; text-align: ${isCurrentUser ? 'right' : 'left'};">
+                ${time}
+            </div>
+        `;
+
+        messagesList.appendChild(messageDiv);
+        // Scroll to bottom
+        setTimeout(() => {
+            messagesList.scrollTop = messagesList.scrollHeight;
+        }, 100);
+    } catch (error) {
+        // Silently ignore errors from external extensions
+        if (error && error.message && !error.message.includes('payload')) {
+            console.error('Error displaying message:', error, message);
+        }
+    }
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // Load messages
@@ -583,7 +1500,10 @@ async function loadMessages(convId) {
             const messages = await response.json();
             const messagesList = document.getElementById('messagesList');
             if (messagesList) {
+                // Clear existing messages and tracking
                 messagesList.innerHTML = '';
+                displayedMessageIds.clear();
+                // Display all messages
                 messages.forEach(msg => displayMessage(msg));
             }
         }
@@ -595,12 +1515,42 @@ async function loadMessages(convId) {
 // Send message
 function sendMessage() {
     const input = document.getElementById('messageInput');
+    if (!input) return;
+    
     const content = input.value.trim();
-    if (content && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ content, attachments: [] }));
-        input.value = '';
-    } else if (content && !conversationId) {
-        alert('Chưa có cuộc trò chuyện. Vui lòng chọn một ứng viên để nhắn tin.');
+    if (!content) return;
+
+    if (!conversationId) {
+        alert('Chưa có cuộc trò chuyện. Vui lòng đợi hệ thống khởi tạo chat.');
+        return;
+    }
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+            // Send via WebSocket
+            ws.send(JSON.stringify({ content, attachments: [] }));
+            
+            // Optimistically display message
+            const tempMessage = {
+                id: 'temp_' + Date.now(),
+                sender_id: currentUser?.id,
+                content: content,
+                created_at: new Date().toISOString()
+            };
+            displayMessage(tempMessage);
+            
+            input.value = '';
+        } catch (error) {
+            console.error('Error sending message:', error);
+            alert('Không thể gửi tin nhắn. Vui lòng thử lại.');
+        }
+    } else {
+        alert('Kết nối chat chưa sẵn sàng. Vui lòng đợi một chút và thử lại.');
+        console.warn('WebSocket not ready:', {
+            wsExists: !!ws,
+            readyState: ws?.readyState,
+            conversationId: conversationId
+        });
     }
 }
 // Expose immediately
@@ -807,13 +1757,14 @@ async function loadProjectFiles(projectId) {
         const fileItemsHtml = attachments.map((attachment, index) => {
             const fileSize = attachment.size ? formatFileSize(attachment.size) : '';
             const uploadedDate = attachment.uploaded_at ? formatDate(attachment.uploaded_at) : '';
+            const meta = getFileIconMeta(attachment.filename || '');
             return `
                 <div class="file-item">
                     <div class="file-item-main">
-                        <div class="file-item-icon">
-                            <i class="fas fa-file"></i>
+                        <div class="file-item-icon ${meta.colorClass}">
+                            <i class="${meta.icon}"></i>
                         </div>
-                        <div>
+                        <div class="file-item-text">
                             <a href="#" onclick="downloadProjectFile(${projectId}, ${index}, event)" class="file-item-title">
                                 ${attachment.filename || 'File'}
                             </a>
@@ -1020,6 +1971,66 @@ function formatFileSize(bytes) {
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+}
+
+async function loadProjectActivities(projectId) {
+    const container = document.getElementById('activityList');
+    if (!container) return;
+
+    container.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Đang tải lịch sử hoạt động...</p>';
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        container.innerHTML = '<p style="text-align: center; color: var(--danger-color); padding: 2rem;">Vui lòng đăng nhập để xem hoạt động dự án.</p>';
+        return;
+    }
+
+    try {
+        const resp = await fetch(`${API_BASE}/api/v1/projects/${projectId}/activities`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+            },
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            container.innerHTML = `<p style="text-align: center; color: var(--danger-color); padding: 2rem;">Không thể tải hoạt động: ${err.detail || resp.status}</p>`;
+            return;
+        }
+
+        const activities = await resp.json();
+        if (!Array.isArray(activities) || activities.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Chưa có hoạt động nào cho dự án này.</p>';
+            return;
+        }
+
+        const itemsHtml = activities
+            .map((act) => {
+                const timeStr = act.created_at ? new Date(act.created_at).toLocaleString('vi-VN') : '';
+                return `
+                    <div class="activity-item">
+                        <div class="activity-icon">
+                            <i class="fas fa-circle"></i>
+                        </div>
+                        <div class="activity-body">
+                            <div class="activity-main">
+                                <div class="activity-description">${act.description || act.action_type}</div>
+                                <div class="activity-time">${timeStr}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            })
+            .join('');
+
+        container.innerHTML = `
+            <div class="activity-timeline">
+                ${itemsHtml}
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading activities:', error);
+        container.innerHTML = '<p style="text-align: center; color: var(--danger-color); padding: 2rem;">Có lỗi xảy ra khi tải lịch sử hoạt động.</p>';
+    }
 }
 
 function renderAttachmentUploadControls(projectId) {

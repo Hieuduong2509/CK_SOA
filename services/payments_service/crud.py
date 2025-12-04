@@ -38,7 +38,12 @@ def topup_wallet(db: Session, user_id: int, amount: float, payment_method: str):
     return transaction
 
 
-def create_escrow(db: Session, project_id: int, milestone_id: int, client_id: int, freelancer_id: int, amount: float):
+def create_escrow(db: Session, project_id: int, milestone_id: int, client_id: int, freelancer_id: int, amount: float, from_wallet: bool = False):
+    """
+    Create escrow deposit.
+    If from_wallet=True: Deduct from client's wallet balance (for bidding projects where client already has money in wallet)
+    If from_wallet=False: Direct payment (for service packages where client pays directly)
+    """
     commission_amount = amount * COMMISSION_RATE
     net_amount = amount - commission_amount
     
@@ -54,19 +59,20 @@ def create_escrow(db: Session, project_id: int, milestone_id: int, client_id: in
     )
     db.add(escrow)
     
-    # Deduct from client wallet
-    client_wallet = get_or_create_wallet(db, client_id)
-    if client_wallet.balance < amount:
-        raise ValueError("Insufficient balance")
-    client_wallet.balance -= amount
+    if from_wallet:
+        # Deduct from client wallet (for bidding projects)
+        client_wallet = get_or_create_wallet(db, client_id)
+        if client_wallet.balance < amount:
+            raise ValueError("Insufficient balance")
+        client_wallet.balance -= amount
     
-    # Create transaction
+    # Create transaction record
     transaction = Transaction(
         user_id=client_id,
         transaction_type=TransactionType.ESCROW_DEPOSIT,
         amount=amount,
         status=TransactionStatus.COMPLETED,
-        description=f"Escrow deposit for project {project_id}"
+        description=f"Escrow deposit for project {project_id}, milestone {milestone_id} (Commission: {commission_amount:.2f}, Net: {net_amount:.2f})"
     )
     db.add(transaction)
     db.commit()
@@ -112,17 +118,30 @@ def release_escrow(db: Session, milestone_id: int):
     return escrow
 
 
-def withdraw_funds(db: Session, user_id: int, amount: float, payment_method: str):
+def withdraw_funds(db: Session, user_id: int, amount: float, payment_method: str, account_details: dict = None):
     wallet = get_or_create_wallet(db, user_id)
     if wallet.balance < amount:
         raise ValueError("Insufficient balance")
+    
+    # Build description from account_details
+    description_parts = [f"Withdraw to {payment_method}"]
+    if account_details:
+        if account_details.get("account"):
+            description_parts.append(f"Account: {account_details.get('account')}")
+        if account_details.get("bank_name"):
+            description_parts.append(f"Bank: {account_details.get('bank_name')}")
+        if account_details.get("email"):
+            description_parts.append(f"Email: {account_details.get('email')}")
+        if account_details.get("phone"):
+            description_parts.append(f"Phone: {account_details.get('phone')}")
     
     transaction = Transaction(
         user_id=user_id,
         transaction_type=TransactionType.WITHDRAW,
         amount=amount,
         payment_method=payment_method,
-        status=TransactionStatus.PENDING
+        status=TransactionStatus.PENDING,
+        description=" | ".join(description_parts) if description_parts else None
     )
     db.add(transaction)
     wallet.balance -= amount

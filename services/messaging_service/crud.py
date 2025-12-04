@@ -5,18 +5,24 @@ from datetime import datetime
 
 
 def get_or_create_conversation(db: Session, participant1_id: int, participant2_id: int, project_id: int = None):
-    conversation = db.query(Conversation).filter(
-        or_(
-            and_(
-                Conversation.participant1_id == participant1_id,
-                Conversation.participant2_id == participant2_id
-            ),
-            and_(
-                Conversation.participant1_id == participant2_id,
-                Conversation.participant2_id == participant1_id
-            )
+    participant_filter = or_(
+        and_(
+            Conversation.participant1_id == participant1_id,
+            Conversation.participant2_id == participant2_id
+        ),
+        and_(
+            Conversation.participant1_id == participant2_id,
+            Conversation.participant2_id == participant1_id
         )
-    ).first()
+    )
+
+    query = db.query(Conversation).filter(participant_filter)
+    if project_id is None:
+        query = query.filter(Conversation.project_id.is_(None))
+    else:
+        query = query.filter(Conversation.project_id == project_id)
+
+    conversation = query.first()
     
     if not conversation:
         conversation = Conversation(

@@ -31,7 +31,10 @@ var API_BASE = window.API_BASE || window.location.origin;
 
     function renderOrders(containerId, orders, type) {
         const container = document.getElementById(containerId);
-        const countLabel = document.getElementById(type === 'active' ? 'activeCount' : 'pendingCount');
+        const countLabel = document.getElementById(
+            type === 'active' ? 'activeCount' :
+            type === 'pending' ? 'pendingCount' : 'completedCount'
+        );
         if (!container || !countLabel) return;
 
         countLabel.textContent = `${orders.length} đơn hàng`;
@@ -39,10 +42,17 @@ var API_BASE = window.API_BASE || window.location.origin;
         if (!orders.length) {
             container.innerHTML = `
                 <div class="empty-state">
-                    <i class="fas ${type === 'active' ? 'fa-clipboard-check' : 'fa-inbox'}"></i>
-                    <p>${type === 'active'
+                    <i class="fas ${
+                        type === 'active' ? 'fa-clipboard-check' :
+                        type === 'pending' ? 'fa-inbox' : 'fa-flag-checkered'
+                    }"></i>
+                    <p>${
+                        type === 'active'
                         ? 'Chưa có đơn hàng nào được giao.'
-                        : 'Chưa có đơn hàng apply nào đang chờ duyệt.'}</p>
+                        : (type === 'pending'
+                            ? 'Chưa có đơn hàng apply nào đang chờ duyệt.'
+                            : 'Chưa có đơn hàng nào đã hoàn tất.')}
+                    </p>
                 </div>
             `;
             return;
@@ -51,7 +61,8 @@ var API_BASE = window.API_BASE || window.location.origin;
         container.innerHTML = orders.map(entry => {
             const project = entry.project;
             const statusLabel = (project.status || '').replace(/_/g, ' ').toLowerCase();
-            const pillsClass = entry.order_state === 'active' ? 'pill-success' : 'pill-warning';
+            const pillsClass = entry.order_state === 'active' ? 'pill-success' :
+                               entry.order_state === 'pending' ? 'pill-warning' : 'pill-neutral';
             const workspaceLink = `workspace.html?project_id=${project.id}`;
 
             return `
@@ -62,7 +73,10 @@ var API_BASE = window.API_BASE || window.location.origin;
                             <p>${project.category || 'Danh mục khác'}</p>
                         </div>
                         <span class="order-pill ${pillsClass}">
-                            ${entry.order_state === 'active' ? 'Đang tham gia' : 'Chờ duyệt'}
+                            ${
+                                entry.order_state === 'active' ? 'Đang tham gia' :
+                                entry.order_state === 'pending' ? 'Chờ duyệt' : 'Đã hoàn tất'
+                            }
                         </span>
                     </header>
                     <p class="order-description">${project.description || 'Chưa có mô tả chi tiết.'}</p>
@@ -121,12 +135,14 @@ var API_BASE = window.API_BASE || window.location.origin;
             const orders = await response.json();
             const activeOrders = orders.filter(order => order.order_state === 'active');
             const pendingOrders = orders.filter(order => order.order_state === 'pending');
+            const completedOrders = orders.filter(order => order.order_state === 'completed');
 
             renderOrders('activeOrders', activeOrders, 'active');
             renderOrders('pendingOrders', pendingOrders, 'pending');
+            renderOrders('completedOrders', completedOrders, 'completed');
         } catch (error) {
             console.error(error);
-            ['activeOrders', 'pendingOrders'].forEach(id => {
+            ['activeOrders', 'pendingOrders', 'completedOrders'].forEach(id => {
                 const container = document.getElementById(id);
                 if (container) {
                     container.innerHTML = `
