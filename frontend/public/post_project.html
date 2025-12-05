@@ -16,26 +16,16 @@
             <h2 style="text-align: center; margin-bottom: 2rem;">Post a Project</h2>
             <form id="projectForm">
                 <div class="form-group">
-                    <label for="title">Project Title</label>
-                    <input type="text" id="title" name="title" required>
+                    <label for="title">Tiêu đề dự án</label>
+                    <input type="text" id="title" name="title" required placeholder="Ví dụ: Xây dựng website bán hàng bằng ReactJS...">
                 </div>
                 <div class="form-group">
-                    <label for="description">Description</label>
-                    <textarea id="description" name="description" required></textarea>
+                    <label for="description">Mô tả chi tiết</label>
+                    <textarea id="description" name="description" rows="8" required placeholder="Mô tả yêu cầu công việc, công nghệ sử dụng, và kết quả mong muốn..."></textarea>
                 </div>
+
                 <div class="form-group">
-                    <label for="budgetType">Budget Type</label>
-                    <select id="budgetType" name="budgetType" required>
-                        <option value="fixed">Fixed Price</option>
-                        <option value="hourly">Hourly Rate</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="budget">Budget ($)</label>
-                    <input type="number" id="budget" name="budget" min="0" step="0.01" required>
-                </div>
-                <div class="form-group">
-                    <label for="skills">Required Skills (comma-separated)</label>
+                    <label for="skills">Kỹ năng yêu cầu (ngăn cách bằng dấu phẩy)</label>
                     <input type="text" id="skills" name="skills" placeholder="e.g., Python, React, UI/UX">
                 </div>
                 <div class="form-group">
@@ -54,20 +44,24 @@
                         <option value="logo">Thiết kế logo</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label for="minimumBadge">Danh hiệu tối thiểu (để apply)</label>
-                    <select id="minimumBadge" name="minimumBadge">
-                        <option value="">Không yêu cầu</option>
-                        <option value="Top Rated">Top Rated</option>
-                        <option value="Premium">Premium</option>
-                        <option value="Fast Response">Phản hồi nhanh</option>
-                        <option value="Customer Favorite">Khách hàng yêu thích</option>
-                    </select>
+                
+                <div class="form-row" style="display: flex; gap: 1rem;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="minimumBadge">Danh hiệu tối thiểu (để apply)</label>
+                        <select id="minimumBadge" name="minimumBadge">
+                            <option value="">Không yêu cầu</option>
+                            <option value="Top Rated">Top Rated</option>
+                            <option value="Premium">Premium</option>
+                            <option value="Fast Response">Phản hồi nhanh</option>
+                            <option value="Customer Favorite">Khách hàng yêu thích</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="minimumLevel">Level tối thiểu (để apply)</label>
+                        <input type="number" id="minimumLevel" name="minimumLevel" min="1" max="10" placeholder="1-10 (để trống = không yêu cầu)">
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="minimumLevel">Level tối thiểu (để apply)</label>
-                    <input type="number" id="minimumLevel" name="minimumLevel" min="1" max="10" placeholder="1-10 (để trống = không yêu cầu)">
-                </div>
+
                 <div class="form-group">
                     <label for="tags">Tags (comma-separated)</label>
                     <input type="text" id="tags" name="tags" placeholder="ví dụ: landing page, ecommerce">
@@ -89,7 +83,7 @@
                     <div id="filePreview" class="media-preview-grid"></div>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">
-                    <i class="fas fa-paper-plane"></i> Publish Project
+                    <i class="fas fa-paper-plane"></i> Đăng Dự Án
                 </button>
             </form>
             <div id="errorMessage" style="color: var(--danger-color); margin-top: 1rem; text-align: center; display: none;"></div>
@@ -107,7 +101,7 @@
             fetchCurrentUser().then(user => currentUser = user);
         }
 
-        // Khai báo biến trước khi sử dụng
+        // Khai báo biến
         const mediaInput = document.getElementById('projectMedia');
         const mediaPreview = document.getElementById('mediaPreview');
         const fileInput = document.getElementById('projectFiles');
@@ -131,21 +125,24 @@
             submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang tạo dự án...';
             
             try {
-                // Prepare deadline - convert date string to ISO format if provided
+                // Xử lý deadline
                 let deadline = null;
                 const deadlineInput = document.getElementById('deadline').value;
                 if (deadlineInput) {
-                    // Convert date input (YYYY-MM-DD) to ISO datetime string
                     deadline = new Date(deadlineInput + 'T23:59:59').toISOString();
                 }
                 
-                // Validate required fields
+                // Validate fields cơ bản
                 const title = document.getElementById('title').value.trim();
                 const description = document.getElementById('description').value.trim();
-                const budgetValue = parseFloat(document.getElementById('budget').value);
                 
-                if (!title || !description || isNaN(budgetValue) || budgetValue <= 0) {
-                    errorDiv.textContent = 'Vui lòng điền đầy đủ thông tin bắt buộc (Tiêu đề, Mô tả, Ngân sách).';
+                // --- CHỈNH SỬA LOGIC NGÂN SÁCH TẠI ĐÂY ---
+                // Mặc định là 0 (Thỏa thuận) và Fixed Price
+                const budgetValue = 0;
+                const budgetTypeValue = "FIXED";
+                
+                if (!title || !description) {
+                    errorDiv.textContent = 'Vui lòng điền đầy đủ tiêu đề và mô tả dự án.';
                     errorDiv.style.display = 'block';
                     submitButton.disabled = false;
                     submitButton.innerHTML = originalButtonText;
@@ -155,14 +152,11 @@
                 const minimumLevelInput = document.getElementById('minimumLevel').value;
                 const minimumLevel = minimumLevelInput ? parseInt(minimumLevelInput) : null;
                 
-                // Convert budget_type to uppercase to match backend enum
-                const budgetTypeValue = document.getElementById('budgetType').value.toUpperCase();
-                
                 const formData = {
                     title: title,
                     description: description,
-                    budget_type: budgetTypeValue, // "FIXED" or "HOURLY"
-                    budget: budgetValue,
+                    budget_type: budgetTypeValue, 
+                    budget: budgetValue, // Gửi 0 lên server
                     skills_required: document.getElementById('skills').value ? 
                         document.getElementById('skills').value.split(',').map(s => s.trim()).filter(s => s) : [],
                     deadline: deadline,
@@ -171,7 +165,7 @@
                         document.getElementById('tags').value.split(',').map(s => s.trim()).filter(s => s) : [],
                     minimum_badge: document.getElementById('minimumBadge').value || null,
                     minimum_level: minimumLevel,
-                    attachments: [] // Empty array for now
+                    attachments: [] 
                 };
 
                 console.log('Submitting project:', formData);
@@ -213,7 +207,6 @@
                         console.log('All files uploaded successfully');
                     } catch (uploadError) {
                         console.error('Upload files failed:', uploadError);
-                        // Vẫn cho phép redirect dù upload lỗi, nhưng thông báo cho user
                         alert('Dự án đã tạo thành công, nhưng một số tệp đính kèm không tải lên được. Bạn có thể thêm lại trong workspace.');
                     }
                 }
@@ -233,6 +226,7 @@
             }
         });
 
+        // --- CÁC HÀM HỖ TRỢ UPLOAD & PREVIEW (GIỮ NGUYÊN) ---
         const MAX_IMAGE_COUNT = 5;
         const MAX_VIDEO_COUNT = 1;
         const MAX_OTHER_FILES = 5;
@@ -393,7 +387,7 @@
                     const errorMsg = `Tệp "${file.name}" vượt quá giới hạn 50MB.`;
                     console.error(errorMsg);
                     uploadErrors.push(errorMsg);
-                    continue; // Skip this file but continue with others
+                    continue; 
                 }
 
                 try {
@@ -431,7 +425,6 @@
                 }
             }
 
-            // Nếu có lỗi, throw để caller có thể xử lý
             if (uploadErrors.length > 0) {
                 throw new Error(`Một số tệp không tải lên được:\n${uploadErrors.join('\n')}`);
             }
@@ -441,4 +434,3 @@
     </script>
 </body>
 </html>
-

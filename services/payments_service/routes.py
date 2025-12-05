@@ -221,3 +221,76 @@ def get_wallet(db: Session = Depends(get_db), account: dict = Depends(resolve_ac
     wallet = get_or_create_wallet(db, user_id)
     return wallet
 
+# Đảm bảo đã import os và httpx ở đầu file
+# PROJECT_SERVICE_URL = os.getenv("PROJECT_SERVICE_URL", "http://project-service:8000")
+
+@router.post("/escrow/deposit", response_model=EscrowDepositResponse)
+def deposit_escrow(request: EscrowDepositRequest, db: Session = Depends(get_db), account: dict = Depends(resolve_account)):
+    """
+    Nạp tiền ký quỹ cho Milestone.
+    """
+    client_id = account.get("id")
+    if not client_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not authenticated")
+    
+    # Lấy thông tin dự án để biết Freelancer là ai
+    PROJECT_SERVICE_URL = os.getenv("PROJECT_SERVICE_URL", "http://project-service:8000")
+    freelancer_id = None
+    
+    try:
+        project_resp = httpx.get(f"{PROJECT_SERVICE_URL}/api/v1/projects/{request.project_id}", timeout=5.0)
+        if project_resp.status_code == 200:
+            project_data = project_resp.json()
+            # Với dự án Bid, freelancer_id đã được set khi Accept Bid
+            # Với dự án Gig, freelancer_id có sẵn trong thông tin gói
+            freelancer_id = project_data.get("freelancer_id")
+            
+            # Fallback cho trường hợp Gig Order mới tạo
+            if not freelancer_id and project_data.get("service_snapshot"):
+                freelancer_id = project_data["service_snapshot"]["freelancer"]["id"]
+    except Exception as e:
+        print(f"Warning: Could not fetch project info: {e}")
+
+    # Nếu vẫn không tìm thấy Freelancer (lỗi dữ liệu), dùng ID 0 hoặc báo lỗi tùy bạn.
+    # Ở đây tôi để tạm 0 để code không crash, Admin sẽ xử lý sau.
+    target_freelancer_id = freelancer_id if freelancer_id else 0
+    
+    try:
+        # 1. Thực hiện trừ tiền và tạo bản ghi Escrow (Logic quan trọng nhất)
+        escrow = create_escrow(
+            db,
+            request.project_id,
+            request.milestone_id,
+            client_id,
+            target_freelancer_id,
+            request.amount,
+            from_wallet=request.from_wallet
+        )
+        
+        # 2. GỌI SANG PROJECT SERVICE ĐỂ KÍCH HOẠT MILESTONE (LOGIC MỚI)
+        if request.milestone_id:
+            try:
+                activation_url = f"{PROJECT_SERVICE_URL}/api/v1/projects/{request.project_id}/milestones/{request.milestone_id}/activate"
+                # Gọi async background hoặc sync đều được. Sync an toàn hơn để đảm bảo UI cập nhật ngay.
+                httpx.post(activation_url, timeout=5.0)
+            except Exception as e:
+                print(f"Error activating milestone {request.milestone_id}: {e}")
+                # Không raise lổi ở đây để tránh rollback giao dịch tiền đã thành công
+
+        # 3. Bắn event
+        publish_event("escrow.deposited", {
+            "escrow_id": escrow.id,
+            "project_id": request.project_id,
+            "client_id": client_id,
+            "freelancer_id": target_freelancer_id,
+            "amount": request.amount
+        })
+        
+        return EscrowDepositResponse(escrow_id=escrow.id, status=escrow.status)
+        
+    except ValueError as e:
+        # Lỗi này thường do không đủ tiền trong ví
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )

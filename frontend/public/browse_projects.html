@@ -197,9 +197,8 @@
         </div>
     </footer>
 
-    <!-- Bid Modal -->
     <div id="bidModal" class="modal" style="display: none;">
-        <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-content" style="max-width: 700px;">
             <div class="modal-header">
                 <h2>Nộp thầu dự án</h2>
                 <button class="modal-close" id="closeBidModal">
@@ -208,30 +207,42 @@
             </div>
             <div class="modal-body">
                 <div id="bidProjectInfo" class="bid-project-info">
-                    <!-- Project info will be inserted here -->
-                </div>
+                    </div>
+                
                 <form id="bidForm">
                     <input type="hidden" id="bidProjectId">
+                    <input type="hidden" id="bidProjectDeadline">
                     <div class="form-group">
-                        <label for="bidPrice">Giá đề xuất (VND) *</label>
-                        <input type="number" id="bidPrice" name="price" min="0" step="1000" required placeholder="Nhập số tiền bạn đề xuất">
-                        <small class="form-help">Số tiền bạn muốn nhận cho dự án này</small>
+                        <label for="bidPrice">Tổng giá trị thầu (VND) *</label>
+                        <input type="number" id="bidPrice" name="price" min="0" step="1000" required placeholder="Nhập tổng số tiền bạn muốn nhận">
                     </div>
+                    
                     <div class="form-group">
-                        <label for="bidTimeline">Thời gian hoàn thành (ngày) *</label>
-                        <input type="number" id="bidTimeline" name="timeline_days" min="1" required placeholder="Ví dụ: 7, 14, 30">
-                        <small class="form-help">Số ngày bạn cần để hoàn thành dự án</small>
+                        <label for="milestoneCount">Kế hoạch triển khai (Chia giai đoạn)</label>
+                        <select id="milestoneCount" class="form-control" style="width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="1">1 Giai đoạn (Làm xong nhận hết)</option>
+                            <option value="2">2 Giai đoạn (50% - 50%)</option>
+                            <option value="3">3 Giai đoạn (Chia đều)</option>
+                            <option value="4">4 Giai đoạn</option>
+                        </select>
+                        <small class="form-help">Hệ thống sẽ tự động chia nhỏ công việc và nhắc khách hàng nạp tiền trước mỗi giai đoạn.</small>
                     </div>
+
+                    <div id="milestoneContainer" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e9ecef;">
+                        </div>
+
                     <div class="form-group">
                         <label for="bidCoverLetter">Thư ngỏ (Cover Letter) *</label>
-                        <textarea id="bidCoverLetter" name="cover_letter" rows="6" required placeholder="Giới thiệu về bản thân, kinh nghiệm liên quan, và lý do bạn phù hợp với dự án này..."></textarea>
+                        <textarea id="bidCoverLetter" name="cover_letter" rows="4" required placeholder="Tại sao bạn phù hợp với dự án này?"></textarea>
                         <small class="form-help">Hãy viết một thư ngỏ thuyết phục để tăng cơ hội được chọn</small>
                     </div>
+
                     <div id="bidErrorMessage" class="error-message" style="display: none; color: var(--danger-color); margin-bottom: 1rem;"></div>
+                    
                     <div class="modal-actions">
                         <button type="button" class="btn btn-secondary" id="cancelBidBtn">Hủy</button>
                         <button type="submit" class="btn btn-primary" id="submitBidBtn">
-                            <i class="fas fa-paper-plane"></i> Gửi thầu
+                            <i class="fas fa-paper-plane"></i> Gửi Thầu
                         </button>
                     </div>
                 </form>
@@ -246,4 +257,3 @@
     <script src="js/browse_projects.js"></script>
 </body>
 </html>
-

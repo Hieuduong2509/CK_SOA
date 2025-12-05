@@ -10,6 +10,578 @@ let currentFreelancerProfile = null;
 let hasSubmittedReview = false;
 const profileCache = {};
 
+// ======================================================================
+// Overrides appended by assistant: improved workspace helpers and flows
+// These definitions supersede earlier ones with the same name.
+// ======================================================================
+
+// API_BASE fallback (requires config.js loaded first)
+var API_BASE = window.API_BASE || window.location.origin;
+
+let ws = null;
+let conversationId = null;
+let currentProject = null;
+let currentUser = null;
+let currentProjectId = null;
+let currentFreelancerId = null;
+let currentFreelancerProfile = null;
+let hasSubmittedReview = false;
+const profileCache = {};
+const workspaceAttachmentState = {};
+
+// --- HELPER: làm sạch cover letter (ẩn DATA_JSON) ---
+function cleanCoverLetterDisplay(text) {
+  if (!text) return '';
+  const parts = String(text).split('DATA_JSON:');
+  return parts[0].trim();
+}
+
+function ensureProjectActionList() {
+  const actionsDiv = document.getElementById('projectActions');
+  if (!actionsDiv) return null;
+  let actionList = actionsDiv.querySelector('.project-action-list');
+  if (!actionList) {
+    actionList = document.createElement('div');
+    actionList.className = 'project-action-list';
+    actionList.style.display = 'flex';
+    actionList.style.flexDirection = 'column';
+    actionList.style.gap = '0.75rem';
+    actionsDiv.appendChild(actionList);
+  }
+  return { actionsDiv, actionList };
+}
+
+const IMAGE_EXTENSIONS = ['jpg','jpeg','png','gif','bmp','svg','webp','avif'];
+const VIDEO_EXTENSIONS = ['mp4','mov','avi','mkv','webm','m4v'];
+const MEDIA_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"><rect width="800" height="600" fill="%23f3f4f6"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%236b7280" font-family="Arial" font-size="32">Preview</text></svg>';
+
+async function fetchUserProfile(userId) {
+  if (!userId) return null;
+  if (profileCache[userId]) return profileCache[userId];
+  try {
+    const headers = {};
+    const token = (typeof getToken === 'function' && getToken()) || localStorage.getItem('access_token');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const response = await fetch(`${API_BASE}/api/v1/users/${userId}`, { headers });
+    if (!response.ok) return null;
+    const profile = await response.json();
+    profileCache[userId] = profile;
+    return profile;
+  } catch (e) {
+    console.error('fetchUserProfile error', e);
+    return null;
+  }
+}
+
+function normalizeAttachmentsList(rawAttachments) {
+  if (!rawAttachments || !Array.isArray(rawAttachments)) return [];
+  return rawAttachments.map(att => {
+    if (typeof att === 'string') {
+      const inferredName = att.split('/').pop() || 'File';
+      return { url: att, filename: inferredName };
+    }
+    if (!att) return null;
+    const url = att.url || att.preview_url || att.download_url || '';
+    const fallbackName = url ? url.split('/').pop() : 'File';
+    return { ...att, filename: att.filename || att.original_name || att.name || fallbackName };
+  }).filter(Boolean);
+}
+
+function getAttachmentExtension(attachment) {
+  if (!attachment) return '';
+  const filename = attachment.filename || attachment.original_name || '';
+  const parts = String(filename).split('.');
+  return parts.length > 1 ? parts.pop().toLowerCase() : '';
+}
+
+function getAttachmentUrl(attachment) {
+  if (!attachment) return '';
+  return attachment.url || attachment.preview_url || attachment.download_url || attachment.presigned_url || '';
+}
+
+function getFileIconMeta(filename) {
+  if (!filename) return { icon: 'fas fa-file', colorClass: 'file-icon-generic text-blue' };
+  const ext = String(filename).split('.').pop().toLowerCase();
+  if (IMAGE_EXTENSIONS.includes(ext)) return { icon: 'fas fa-file-image', colorClass: 'file-icon-image text-purple' };
+  if (VIDEO_EXTENSIONS.includes(ext)) return { icon: 'fas fa-file-video', colorClass: 'file-icon-video text-indigo' };
+  if (['pdf'].includes(ext)) return { icon: 'fas fa-file-pdf', colorClass: 'file-icon-pdf text-red' };
+  if (['zip','rar','7z','tar','gz'].includes(ext)) return { icon: 'fas fa-file-archive', colorClass: 'file-icon-archive text-amber' };
+  if (['doc','docx'].includes(ext)) return { icon: 'fas fa-file-word', colorClass: 'file-icon-doc text-blue' };
+  if (['xls','xlsx','csv'].includes(ext)) return { icon: 'fas fa-file-excel', colorClass: 'file-icon-sheet text-green' };
+  return { icon: 'fas fa-file', colorClass: 'file-icon-generic text-blue' };
+}
+
+function isImageAttachment(att) {
+  const ct = ((att && att.content_type) || '').toLowerCase();
+  if (ct.includes('image')) return true;
+  return IMAGE_EXTENSIONS.includes(getAttachmentExtension(att));
+}
+function isVideoAttachment(att) {
+  const ct = ((att && att.content_type) || '').toLowerCase();
+  if (ct.includes('video')) return true;
+  return VIDEO_EXTENSIONS.includes(getAttachmentExtension(att));
+}
+
+function formatCurrency(value) {
+  if (!value) return '0 nghìn đồng';
+  const thousands = Number(value) / 1000;
+  return new Intl.NumberFormat('vi-VN',{minimumFractionDigits:0,maximumFractionDigits:1}).format(thousands) + ' nghìn đồng';
+}
+function formatDate(dateString) {
+  if (!dateString) return 'Chưa có';
+  const d = new Date(dateString);
+  return d.toLocaleDateString('vi-VN',{year:'numeric',month:'long',day:'numeric'});
+}
+
+async function getProject(projectId) {
+  try {
+    const token = localStorage.getItem('access_token');
+    const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (res.ok) return await res.json();
+    const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(err.detail || `Failed to fetch project: ${res.status}`);
+  } catch (e) {
+    console.error('Error fetching project:', e);
+    throw e;
+  }
+}
+window.getProject = getProject;
+
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  const btn = document.querySelector(`[data-tab="${tabName}"]`);
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  const pane = document.getElementById(`tab-${tabName}`);
+  if (pane) pane.classList.add('active');
+  if (tabName === 'bidders' && currentProjectId) loadBidders(currentProjectId);
+  else if (tabName === 'milestones' && currentProjectId) loadMilestones(currentProjectId);
+  else if (tabName === 'files' && currentProjectId) loadProjectFiles(currentProjectId);
+  else if (tabName === 'activity' && currentProjectId) loadProjectActivities(currentProjectId);
+}
+window.switchTab = switchTab;
+
+function getUserRole(user) {
+  if (!user || !user.role) return null;
+  let role = user.role;
+  if (typeof role === 'object' && role.value) role = role.value;
+  else if (typeof role === 'object' && role.name) role = role.name;
+  return String(role).toLowerCase();
+}
+function isFreelancer(user){ return getUserRole(user) === 'freelancer'; }
+function isClient(user, project){
+  if (!user || !project) return false;
+  const role = getUserRole(user);
+  if (role === 'client') return user.id === project.client_id;
+  return false;
+}
+
+async function loadWorkspace(projectId){
+  currentProjectId = projectId;
+  currentUser = (typeof getCurrentUserProfile === 'function' && getCurrentUserProfile()) || currentUser;
+  if (!currentUser && typeof fetchCurrentUser === 'function') currentUser = await fetchCurrentUser();
+  currentProject = await getProject(projectId);
+  if (currentProject) {
+    if (currentProject.freelancer_id) {
+      currentFreelancerId = currentProject.freelancer_id;
+      currentFreelancerProfile = await fetchUserProfile(currentFreelancerId);
+    } else if (currentProject.accepted_bid_id) {
+      try {
+        const token = localStorage.getItem('access_token');
+        const bidsResponse = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} });
+        if (bidsResponse.ok) {
+          const bids = await bidsResponse.json();
+          const accepted = bids.find(b => b.id === currentProject.accepted_bid_id);
+          if (accepted) {
+            currentFreelancerId = accepted.freelancer_id;
+            currentFreelancerProfile = await fetchUserProfile(currentFreelancerId);
+          }
+        }
+      } catch (e) { console.error('Error fetching accepted bid:', e); }
+    } else {
+      currentFreelancerProfile = null;
+    }
+    const t = document.getElementById('projectTitle'); if (t) t.textContent = currentProject.title || '';
+    const d = document.getElementById('projectDescription'); if (d) d.textContent = currentProject.description || 'Không có mô tả';
+
+    const userIsFreelancer = isFreelancer(currentUser);
+    const userIsClient = isClient(currentUser, currentProject);
+    const isProjectFreelancer = userIsFreelancer && (currentProject.freelancer_id === currentUser.id || (currentProject.accepted_bid_id && currentFreelancerId === currentUser.id));
+
+    if (userIsClient || isProjectFreelancer) {
+      setupParticipantView();
+      await loadProjectDetails(currentProject);
+      loadBidders(projectId);
+      loadMilestones(projectId);
+      loadProjectFiles(projectId);
+      await initializeChat(projectId);
+      if (userIsClient) {
+        if (typeof setupReviewControls === 'function') setupReviewControls();
+        if (typeof maybeShowReviewButton === 'function') maybeShowReviewButton();
+        if (typeof setupDeliveryControlsForClient === 'function') setupDeliveryControlsForClient();
+      } else if (isProjectFreelancer) {
+        if (typeof setupDeliveryControlsForFreelancer === 'function') setupDeliveryControlsForFreelancer();
+      }
+    } else if (userIsFreelancer) {
+      setupFreelancerView();
+      if (typeof preloadWorkspaceShowcase === 'function') preloadWorkspaceShowcase(currentProject, projectId);
+    } else {
+      alert('Bạn không có quyền truy cập workspace này.');
+      window.location.href = 'index.html';
+    }
+  }
+}
+window.loadWorkspace = loadWorkspace;
+
+function setupFreelancerView(){
+  const chatContainer = document.getElementById('chatContainer'); if (chatContainer) chatContainer.style.display = 'none';
+  const controlPanelWrapper = document.getElementById('controlPanelWrapper'); if (controlPanelWrapper) controlPanelWrapper.style.display = 'none';
+  const mainGrid = document.getElementById('workspaceMainGrid'); if (mainGrid) mainGrid.style.gridTemplateColumns = '1fr';
+  const showcaseWrapper = document.getElementById('workspaceShowcaseWrapper'); if (showcaseWrapper) showcaseWrapper.style.maxWidth = '100%';
+}
+function setupParticipantView(){
+  const chatContainer = document.getElementById('chatContainer'); if (chatContainer) chatContainer.style.display = 'flex';
+  const controlPanelWrapper = document.getElementById('controlPanelWrapper'); if (controlPanelWrapper) controlPanelWrapper.style.display = 'block';
+  const mainGrid = document.getElementById('workspaceMainGrid'); if (mainGrid) mainGrid.style.gridTemplateColumns = '1fr 400px';
+}
+
+// --- LOAD BIDDERS ---
+async function loadBidders(projectId){
+  const biddersList = document.getElementById('biddersList');
+  if (!biddersList) return;
+  biddersList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Đang tải...</p>';
+  try{
+    const token = localStorage.getItem('access_token');
+    if (!token){
+      biddersList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Vui lòng đăng nhập để xem ứng viên.</p>';
+      return;
+    }
+    const bidsResponse = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, { headers: { 'Authorization': `Bearer ${token}` } });
+    if (!bidsResponse.ok) throw new Error('Failed to load bids');
+    const bids = await bidsResponse.json();
+    const project = currentProject || await getProject(projectId);
+    if (!currentFreelancerId && project && project.accepted_bid_id){
+      const acceptedBid = bids.find(b => b.id === project.accepted_bid_id);
+      if (acceptedBid) currentFreelancerId = acceptedBid.freelancer_id;
+    }
+    if (!bids.length){
+      biddersList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Chưa có ai apply cho dự án này.</p>';
+      return;
+    }
+    const bidsWithProfiles = await Promise.all(
+      bids.map(async (bid) => {
+        try{
+          const profileResponse = await fetch(`${API_BASE}/api/v1/users/${bid.freelancer_id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+          if (profileResponse.ok){
+            const profile = await profileResponse.json();
+            return { ...bid, profile };
+          }
+        }catch(e){ console.error(`Error fetching profile for freelancer ${bid.freelancer_id}:`, e); }
+        return { ...bid, profile: null };
+      })
+    );
+    biddersList.innerHTML = bidsWithProfiles.map(bid => {
+      const profile = bid.profile;
+      const projectStatus = ((project && project.status) || '').toLowerCase();
+      const canAccept = projectStatus === 'open' || projectStatus === 'pending_approval';
+      const displayCoverLetter = cleanCoverLetterDisplay(bid.cover_letter);
+      return `
+        <div class="bidder-card" style="border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1rem; background: var(--bg-gray);">
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:1rem;">
+            <div style="flex:1;">
+              <h4 style="margin:0 0 0.5rem 0; color:var(--text-primary);">
+                ${profile ? `<a href="freelancer_profile.html?id=${profile.user_id}" target="_blank" style="color:var(--primary-color); text-decoration:none;">${profile.headline || profile.display_name || 'Freelancer'}</a>` : `Freelancer #${bid.freelancer_id}`}
+              </h4>
+              <p style="color:var(--text-secondary); margin:0.5rem 0; font-size:0.9375rem;">
+                <strong>Giá đề xuất:</strong> ${formatCurrency(bid.price)} | <strong>Thời gian:</strong> ${bid.timeline_days} ngày
+              </p>
+            </div>
+            <div style="display:flex;gap:0.5rem;flex-shrink:0;flex-direction:column;">
+              <button class="btn btn-primary btn-small" onclick="startChatWithBidder(${bid.freelancer_id}, ${projectId})" title="Nhắn tin" style="white-space:nowrap;">
+                <i class="fas fa-comment"></i> Nhắn tin
+              </button>
+              ${canAccept ? `
+                <button class="btn btn-success btn-small" onclick="acceptBid(${projectId}, ${bid.id})" title="Duyệt" style="white-space:nowrap;">
+                  <i class="fas fa-check"></i> Duyệt
+                </button>` : ''}
+            </div>
+          </div>
+          ${displayCoverLetter ? `
+            <div style="background:white; padding:1rem; border-radius:var(--radius-md); margin-top:1rem; border-left:3px solid var(--primary-color);">
+              <strong style="color:var(--text-primary); font-size:0.875rem;">Thư giới thiệu & Kế hoạch:</strong>
+              <p style="margin:0.5rem 0 0 0; color:var(--text-secondary); white-space:pre-wrap; font-size:0.9375rem; line-height:1.6;">${escapeHtml(displayCoverLetter)}</p>
+            </div>` : ''}
+        </div>`;
+    }).join('');
+  }catch(e){
+    console.error('Error loading bidders:', e);
+    biddersList.innerHTML = '<p style="text-align:center;color:var(--danger-color);padding:2rem;">Có lỗi xảy ra khi tải danh sách ứng viên.</p>';
+  }
+}
+
+// --- LOAD MILESTONES ---
+async function loadMilestones(projectId){
+  const milestonesList = document.getElementById('milestonesList');
+  if (!milestonesList) return;
+  milestonesList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Đang tải...</p>';
+  try{
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/milestones`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} });
+    if (response.ok){
+      const milestones = await response.json();
+      if (!milestones.length){
+        milestonesList.innerHTML = '<p style="text-align:center;color:var(--text-secondary);padding:2rem;">Chưa có milestone nào.</p>';
+        return;
+      }
+      const user = currentUser || (typeof getCurrentUserProfile === 'function' && getCurrentUserProfile());
+      let normalizedRole = '';
+      if (user && user.role){
+        if (typeof user.role === 'string') normalizedRole = user.role;
+        else normalizedRole = user.role.value || user.role.name || '';
+      }
+      normalizedRole = String(normalizedRole).toLowerCase();
+      const isClientRole = normalizedRole === 'client';
+      const isFreelancerRole = normalizedRole === 'freelancer';
+      milestonesList.innerHTML = milestones.map(m => {
+        const status = (m.status || '').toLowerCase();
+        const statusLabels = {
+          'pending':   { label: 'Chờ nạp tiền',    class: 'status-pending',   color: '#9CA3AF' },
+          'in_progress': { label: 'Đang thực hiện', class: 'status-progress', color: '#3B82F6' },
+          'submitted': { label: 'Đã nộp bài',      class: 'status-submitted', color: '#F59E0B' },
+          'approved':  { label: 'Đã hoàn thành',   class: 'status-approved',  color: '#10B981' },
+          'paid':      { label: 'Đã thanh toán',   class: 'status-paid',      color: '#10B981' },
+          'rejected':  { label: 'Yêu cầu sửa',     class: 'status-rejected',  color: '#EF4444' }
+        };
+        const info = statusLabels[status] || { label: status, class: 'status-default', color: '#6B7280' };
+        let actionButton = '';
+        if (isClientRole && status === 'pending'){
+          actionButton = `<button class="btn btn-primary btn-small" onclick="depositMilestone(${projectId}, ${m.id}, ${m.amount})"><i class="fas fa-wallet"></i> Nạp tiền (Deposit)</button>`;
+        } else if (isClientRole && status === 'submitted'){
+          actionButton = `
+            <button class="btn btn-success btn-small" onclick="approveMilestone(${projectId}, ${m.id})"><i class="fas fa-check"></i> Duyệt & Trả tiền</button>
+            <button class="btn btn-outline btn-small" onclick="requestRevision(${projectId}, ${m.id})" style="margin-left:5px; border-color:#f59e0b; color:#f59e0b;"><i class="fas fa-redo"></i> Yêu cầu sửa</button>`;
+        } else if (isFreelancerRole && status === 'pending'){
+          actionButton = `<span style="font-style:italic; color:#666; font-size:0.9em;"><i class="fas fa-hourglass-half"></i> Chờ khách hàng nạp tiền...</span>`;
+        } else if (isFreelancerRole && (status === 'in_progress' || status === 'rejected')){
+          actionButton = `<button class="btn btn-primary btn-small" onclick="submitMilestone(${projectId}, ${m.id})"><i class="fas fa-file-upload"></i> Nộp sản phẩm</button>`;
+        }
+        return `
+          <div style="background: var(--bg-gray); padding: 1.5rem; border-radius: var(--radius-lg); margin-bottom: 1rem; border-left: 4px solid ${info.color}; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">
+              <div>
+                <h4 style="margin:0 0 0.25rem 0; color: var(--text-primary); font-size:1.1em;">${m.title}</h4>
+                <div style="color:var(--primary-color); font-weight:700; font-size:1.1em;">${formatCurrency(m.amount)}</div>
+              </div>
+              <span style="padding:0.25rem 0.75rem;background:${info.color}15;color:${info.color};border-radius:99px;font-size:0.85rem;font-weight:600;border:1px solid ${info.color}30;">
+                ${info.label}
+              </span>
+            </div>
+            ${m.description ? `<p style="margin:0.5rem 0; color:var(--text-secondary); font-size:0.95rem; line-height:1.5;">${m.description}</p>` : ''}
+            <div style="border-top:1px solid #e5e7eb;margin-top:1rem;padding-top:1rem;display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-size:0.85rem;color:var(--text-secondary);">
+                ${m.submitted_at ? `<span><i class="fas fa-clock"></i> Nộp: ${formatDate(m.submitted_at)}</span>` : ''}
+              </div>
+              <div>${actionButton}</div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+  }catch(e){
+    console.error('Error loading milestones:', e);
+    milestonesList.innerHTML = '<p style="text-align:center;color:var(--danger-color);padding:2rem;">Có lỗi xảy ra khi tải milestones.</p>';
+  }
+}
+
+// --- Nạp tiền milestone ---
+async function depositMilestone(projectId, milestoneId, amount){
+  if (!confirm(`Xác nhận nạp ${formatCurrency(amount)} vào hệ thống để bắt đầu giai đoạn này? Tiền sẽ được giữ an toàn (Escrow).`)) return;
+  const token = localStorage.getItem('access_token');
+  try{
+    const res = await fetch(`${API_BASE}/api/v1/payments/escrow/deposit`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ project_id: projectId, milestone_id: milestoneId, amount: amount, from_wallet: true })
+    });
+    if (res.ok){
+      alert('Nạp tiền thành công! Milestone đã được kích hoạt.');
+      loadMilestones(projectId);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      if (res.status === 400 && String(err.detail || '').includes('balance')){
+        if (confirm('Số dư ví không đủ. Nạp thêm tiền?')) window.location.href = 'payment.html';
+      } else {
+        alert(err.detail || 'Lỗi khi nạp tiền.');
+      }
+    }
+  } catch(e){ alert('Lỗi kết nối.'); }
+}
+window.depositMilestone = depositMilestone;
+
+async function startChatWithBidder(freelancerId, projectId){
+  try{
+    const token = localStorage.getItem('access_token');
+    if (!token){ alert('Vui lòng đăng nhập để nhắn tin.'); return; }
+    const res = await fetch(`${API_BASE}/api/v1/chat/start`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body: JSON.stringify({ participant2_id: freelancerId, project_id: projectId })
+    });
+    if (res.ok){
+      const conv = await res.json();
+      conversationId = conv.id;
+      connectWebSocket(conversationId, token);
+      loadMessages(conversationId);
+      alert('Đã bắt đầu cuộc trò chuyện!');
+    } else {
+      const err = await res.json().catch(()=>({}));
+      alert(err.detail || 'Không thể bắt đầu cuộc trò chuyện.');
+    }
+  }catch(e){
+    console.error('Error starting chat:', e);
+    alert('Có lỗi xảy ra khi bắt đầu cuộc trò chuyện.');
+  }
+}
+window.startChatWithBidder = startChatWithBidder;
+
+async function acceptBid(projectId, bidId){
+  if (!confirm('Bạn có chắc chắn muốn DUYỆT freelancer này cho dự án? Hành động này sẽ tạo ra các mốc thanh toán (Milestone) nhưng chưa trừ tiền ngay.')) return;
+  const token = localStorage.getItem('access_token');
+  try{
+    const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/accept`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body: JSON.stringify({ bid_id: bidId })
+    });
+    if (res.ok){
+      alert("Đã chấp nhận thầu thành công! Vui lòng vào tab 'Lộ trình & Thanh toán' để nạp tiền cho giai đoạn đầu tiên.");
+      location.reload();
+    } else {
+      alert("Lỗi khi duyệt thầu.");
+    }
+  }catch(e){
+    console.error(e);
+    alert("Lỗi kết nối.");
+  }
+}
+window.acceptBid = acceptBid;
+
+async function initializeChat(projectId){
+  try{
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    const project = currentProject || await getProject(projectId);
+    if (!project) return;
+    const userIsClient = isClient(currentUser, project);
+    const userIsFreelancer = isFreelancer(currentUser);
+    let participant2Id = null;
+    if (userIsClient){
+      participant2Id = project.freelancer_id || currentFreelancerId;
+      if (!participant2Id && project.accepted_bid_id){
+        // will be set when bids loaded
+      }
+    } else if (userIsFreelancer){
+      participant2Id = project.client_id;
+    }
+    if (!participant2Id) return;
+    const res = await fetch(`${API_BASE}/api/v1/chat/start`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body: JSON.stringify({ participant2_id: participant2Id, project_id: projectId })
+    });
+    if (res.ok){
+      const conv = await res.json();
+      conversationId = conv.id;
+      connectWebSocket(conversationId, token);
+      loadMessages(conversationId);
+    }
+  }catch(e){ console.error('Error initializing chat:', e); }
+}
+
+function connectWebSocket(convId, token){
+  if (!convId || !token) return;
+  const base = API_BASE.replace(/^http/i, API_BASE.startsWith('https') ? 'wss' : 'ws');
+  const normalized = base.endsWith('/') ? base.slice(0,-1) : base;
+  const wsUrl = `${normalized}/api/v1/chat/ws/${convId}?token=${encodeURIComponent(token)}`;
+  if (ws) { try{ ws.close(); }catch(_){} ws = null; }
+  try{
+    ws = new WebSocket(wsUrl);
+    ws.onmessage = (event) => {
+      try{
+        const data = JSON.parse(event.data);
+        if (data.type === 'message' && data.message) displayMessage(data.message);
+        else if (data.id && data.content) displayMessage(data);
+      }catch(_){}
+    };
+  }catch(e){ console.error(e); }
+}
+
+const displayedMessageIds = new Set();
+function displayMessage(message){
+  try{
+    const messagesList = document.getElementById('messagesList');
+    if (!messagesList) return;
+    const isCurrentUser = currentUser && message.sender_id === currentUser.id;
+    const messageId = message.id ? String(message.id) : null;
+    if (messageId && displayedMessageIds.has(messageId)) return;
+    if (messageId) displayedMessageIds.add(messageId);
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'workspace-message-row';
+    messageDiv.style.cssText = `display:flex;flex-direction:column;align-items:${isCurrentUser?'flex-end':'flex-start'};margin-bottom:0.75rem;width:100%;`;
+    const bubbleStyle = isCurrentUser
+      ? `background: linear-gradient(135deg, var(--primary-color) 0%, #6a82fb 100%); color: white; border-radius: 1rem 1rem 0.25rem 1rem;`
+      : `background: #f1f3f5; color: #1a202c; border-radius: 1rem 1rem 1rem 0.25rem;`;
+    messageDiv.innerHTML = `<div style="${bubbleStyle} padding:0.75rem 1rem; box-shadow:0 2px 4px rgba(0,0,0,0.1); max-width:80%; word-wrap:break-word;">${escapeHtml(message.content)}</div>`;
+    messagesList.appendChild(messageDiv);
+    setTimeout(() => messagesList.scrollTop = messagesList.scrollHeight, 100);
+  }catch(_){}
+}
+
+function escapeHtml(text){
+  const div = document.createElement('div');
+  div.textContent = String(text || '');
+  return div.innerHTML;
+}
+
+async function loadMessages(convId){
+  try{
+    const token = localStorage.getItem('access_token');
+    const res = await fetch(`${API_BASE}/api/v1/chat/${convId}/messages`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} });
+    if (res.ok){
+      const messages = await res.json();
+      const list = document.getElementById('messagesList');
+      if (list){
+        list.innerHTML = '';
+        displayedMessageIds.clear();
+        messages.forEach(msg => displayMessage(msg));
+      }
+    }
+  }catch(_){}
+}
+
+function sendMessage(){
+  const input = document.getElementById('messageInput');
+  if (!input) return;
+  const content = input.value.trim();
+  if (!content || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ content, attachments: [] }));
+  displayMessage({ id: 'temp_'+Date.now(), sender_id: currentUser?.id, content });
+  input.value = '';
+}
+window.sendMessage = sendMessage;
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('messageInput');
+  if (input) input.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const tabName = this.getAttribute('data-tab-name') || this.getAttribute('data-tab');
+      if (tabName) switchTab(tabName);
+    });
+  });
+  const sendBtn = document.getElementById('sendMessageBtn');
+  if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+});
+
 function ensureProjectActionList() {
     const actionsDiv = document.getElementById('projectActions');
     if (!actionsDiv) return null;
@@ -2271,7 +2843,133 @@ async function deleteProjectFile(projectId, attachmentIndex, filename) {
         alert('Có lỗi xảy ra khi xóa tệp: ' + (error.message || 'Unknown error'));
     }
 }
+// --- THÊM HÀM NÀY VÀO TRƯỚC HÀM loadBidders ---
 
+function cleanCoverLetterDisplay(text) {
+    if (!text) return '';
+    // Tìm vị trí của chuỗi DATA_JSON và cắt bỏ toàn bộ phần sau nó
+    const parts = text.split('DATA_JSON:');
+    return parts[0].trim();
+}
+
+// --- CẬP NHẬT LẠI HÀM loadBidders ---
+
+async function loadBidders(projectId) {
+    const biddersList = document.getElementById('biddersList');
+    if (!biddersList) return; // Safety check
+
+    biddersList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Đang tải...</p>';
+
+    try {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            biddersList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Vui lòng đăng nhập để xem ứng viên.</p>';
+            return;
+        }
+
+        // Fetch bids
+        const bidsResponse = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!bidsResponse.ok) {
+            throw new Error('Failed to load bids');
+        }
+
+        const bids = await bidsResponse.json();
+
+        // Fetch project to check status
+        const project = currentProject || await getProject(projectId);
+
+        // If project has accepted bid, determine freelancer id
+        if (!currentFreelancerId && project && project.accepted_bid_id) {
+            const acceptedBid = bids.find(b => b.id === project.accepted_bid_id);
+            if (acceptedBid) {
+                currentFreelancerId = acceptedBid.freelancer_id;
+            }
+        }
+
+        if (bids.length === 0) {
+            biddersList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Chưa có ai apply cho dự án này.</p>';
+            return;
+        }
+
+        // Fetch freelancer profiles for each bid
+        const bidsWithProfiles = await Promise.all(
+            bids.map(async (bid) => {
+                try {
+                    const profileResponse = await fetch(`${API_BASE}/api/v1/users/${bid.freelancer_id}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (profileResponse.ok) {
+                        const profile = await profileResponse.json();
+                        return { ...bid, profile };
+                    }
+                } catch (error) {
+                    console.error(`Error fetching profile for freelancer ${bid.freelancer_id}:`, error);
+                }
+                return { ...bid, profile: null };
+            })
+        );
+
+        // Render bidders
+        biddersList.innerHTML = bidsWithProfiles.map(bid => {
+            const profile = bid.profile;
+            const projectStatus = ((project && project.status) || '').toLowerCase();
+            const canAccept = projectStatus === 'open' || projectStatus === 'pending_approval';
+            
+            // SỬ DỤNG HÀM CLEAN DATA TẠI ĐÂY
+            const displayCoverLetter = cleanCoverLetterDisplay(bid.cover_letter);
+
+            return `
+                <div class="bidder-card" style="border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1rem; background: var(--bg-gray);">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                        <div style="flex: 1;">
+                            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">
+                                ${profile ? `<a href="freelancer_profile.html?id=${profile.user_id}" target="_blank" style="color: var(--primary-color); text-decoration: none;">${profile.headline || profile.display_name || 'Freelancer'}</a>` : `Freelancer #${bid.freelancer_id}`}
+                            </h4>
+                            ${profile ? `
+                                <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem; font-size: 0.875rem; color: var(--text-secondary);">
+                                    ${profile.rating ? `<span><i class="fas fa-star" style="color: #FFD700;"></i> ${profile.rating.toFixed(1)} (${profile.total_reviews || 0})</span>` : ''}
+                                    ${profile.level ? `<span><i class="fas fa-level-up-alt"></i> Level ${profile.level}</span>` : ''}
+                                    ${profile.location ? `<span><i class="fas fa-map-marker-alt"></i> ${profile.location}</span>` : ''}
+                                </div>
+                                ${profile.badges && profile.badges.length > 0 ? `
+                                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+                                        ${profile.badges.map(badge => `<span style="background: rgba(0, 102, 255, 0.1); color: var(--primary-color); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem;">${badge}</span>`).join('')}
+                                    </div>
+                                ` : ''}
+                            ` : ''}
+                            <p style="color: var(--text-secondary); margin: 0.5rem 0; font-size: 0.9375rem;">
+                                <strong>Giá đề xuất:</strong> ${formatCurrency(bid.price)} | 
+                                <strong>Thời gian:</strong> ${bid.timeline_days} ngày
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; flex-shrink: 0; flex-direction: column;">
+                            <button class="btn btn-primary btn-small" onclick="startChatWithBidder(${bid.freelancer_id}, ${projectId})" title="Nhắn tin" style="white-space: nowrap;">
+                                <i class="fas fa-comment"></i> Nhắn tin
+                            </button>
+                            ${canAccept ? `
+                                <button class="btn btn-success btn-small" onclick="acceptBid(${projectId}, ${bid.id})" title="Duyệt" style="white-space: nowrap;">
+                                    <i class="fas fa-check"></i> Duyệt
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    ${displayCoverLetter ? `
+                        <div style="background: white; padding: 1rem; border-radius: var(--radius-md); margin-top: 1rem; border-left: 3px solid var(--primary-color);">
+                            <strong style="color: var(--text-primary); font-size: 0.875rem;">Thư giới thiệu & Kế hoạch:</strong>
+                            <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); white-space: pre-wrap; font-size: 0.9375rem; line-height: 1.6;">${escapeHtml(displayCoverLetter)}</p>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading bidders:', error);
+        biddersList.innerHTML = '<p style="text-align: center; color: var(--danger-color); padding: 2rem;">Có lỗi xảy ra khi tải danh sách ứng viên.</p>';
+    }
+}
 // Expose immediately
 window.loadProjectFiles = loadProjectFiles;
 window.handleFileUpload = handleFileUpload;
