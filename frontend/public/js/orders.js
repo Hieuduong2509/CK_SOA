@@ -15,6 +15,35 @@ var API_BASE = window.API_BASE || window.location.origin;
     let currentTab = 'bidding';
     let clientViewFilter = 'posted';
     let isFreelancerView = false;
+    const ordersBidCache = {};
+    let freelancerAssigned = [];
+    let freelancerProposals = [];
+
+    // Helpers for cover letter/milestones
+    function cleanCoverLetterDisplay(text) {
+        if (!text) return '';
+        const parts = String(text).split('DATA_JSON:');
+        return parts[0].trim();
+    }
+    function coverLetterExcerpt(text, maxChars = 220) {
+        const t = cleanCoverLetterDisplay(text || '');
+        if (!t) return '';
+        return t.length <= maxChars ? t : (t.slice(0, maxChars).trim() + '...');
+    }
+    function extractBidMilestones(bid) {
+        try {
+            if (bid && Array.isArray(bid.milestones) && bid.milestones.length) return bid.milestones;
+            if (bid && bid.cover_letter && bid.cover_letter.includes('DATA_JSON:')) {
+                const parts = String(bid.cover_letter).split('DATA_JSON:');
+                const jsonStr = (parts[1] || '').trim();
+                if (jsonStr) {
+                    const data = JSON.parse(jsonStr);
+                    if (Array.isArray(data)) return data;
+                }
+            }
+        } catch (_) {}
+        return [];
+    }
 
     function switchOrdersTab(target) {
         currentTab = target;
@@ -94,6 +123,11 @@ var API_BASE = window.API_BASE || window.location.origin;
             minimumFractionDigits: 0,
             maximumFractionDigits: 0
         }).format(thousands) + ' nghìn đồng';
+    }
+    // Plain VND number with dot separators, no unit suffix
+    function formatNumberVND(amount) {
+        const n = Number(amount) || 0;
+        return n.toLocaleString('vi-VN');
     }
 
     async function fetchBidsCount(projectId) {
@@ -299,15 +333,9 @@ var API_BASE = window.API_BASE || window.location.origin;
             if (postProjectBtn) {
                 postProjectBtn.style.display = 'none';
             }
-            // Hiển thị thanh filter giống như bên user (posted/purchased/completed)
-            if (clientFilterWrapper) {
-                clientFilterWrapper.style.display = 'flex';
-                if (tabHeader) {
-                    tabHeader.style.display = 'none';
-                }
-                // Mặc định: nếu có ?tab=gig -> chọn 'purchased', ngược lại 'posted'
-                initClientFilters(initialTabParam === 'gig' ? 'purchased' : 'posted');
-            }
+            // Ẩn filter client; hiển thị sub tabs freelancer
+            if (clientFilterWrapper) clientFilterWrapper.style.display = 'none';
+            if (tabHeader) tabHeader.style.display = ''; // giữ tab chính
         }
 
         try {
@@ -319,7 +347,51 @@ var API_BASE = window.API_BASE || window.location.origin;
                 return;
             }
             projects = await response.json();
-            renderProjectsForCurrentFilter();
+
+            if (isFreelancer(currentUser)) {
+                // 1) Assigned jobs (by freelancer_id) -> active jobs
+                const activeStatuses = ['in_progress','delivered'];
+                freelancerAssigned = (projects || []).filter(p => activeStatuses.includes(String(p.status || '').toLowerCase()));
+
+                // 2) Sent proposals: fetch OPEN projects and check /bids/me
+                try {
+                    const meResp = await fetch(`${API_BASE}/api/v1/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    const me = meResp.ok ? await meResp.json() : null;
+                    const myId = me ? me.id : null;
+                    // Lấy dự án có thể xuất hiện hồ sơ đã nộp: OPEN + PENDING_APPROVAL
+                    const openResp = await fetch(`${API_BASE}/api/v1/projects?status_filter=OPEN`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    const pendResp = await fetch(`${API_BASE}/api/v1/projects?status_filter=pending_approval`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    const openList = openResp.ok ? await openResp.json() : [];
+                    const pendList = pendResp.ok ? await pendResp.json() : [];
+                    // Gộp và khử trùng lặp theo id
+                    const byId = new Map();
+                    [...openList, ...pendList].forEach(p => { if (p && p.id) byId.set(p.id, p); });
+                    const candidateProjects = Array.from(byId.values());
+                    const checks = candidateProjects.map(async (p) => {
+                        try {
+                            const listResp = await fetch(`${API_BASE}/api/v1/projects/${p.id}/bids`, { headers: { 'Authorization': `Bearer ${token}` } });
+                            if (!listResp.ok) return null;
+                            const bids = await listResp.json();
+                            const myBid = Array.isArray(bids) && myId ? bids.find(b => b.freelancer_id === myId) : null;
+                            if (myBid) {
+                                ordersBidCache[myBid.id] = myBid;
+                                return { project: p, bid: myBid };
+                            }
+                        } catch(_) {}
+                        return null;
+                    });
+                    const results = await Promise.all(checks);
+                    freelancerProposals = results.filter(Boolean);
+                } catch(_) { freelancerProposals = []; }
+
+                renderFreelancerBidding();
+
+                // 3) Also render GIG orders tab for freelancer
+                const gigProjects = (projects || []).filter(p => String(p.project_type || '').toUpperCase() === 'GIG_ORDER');
+                renderGigOrders(gigProjects);
+            } else {
+                renderProjectsForCurrentFilter();
+            }
         } catch (error) {
             console.error('fetchProjects error', error);
             showGlobalMessage('Không thể tải danh sách dự án. Vui lòng thử lại sau.');
@@ -358,6 +430,10 @@ var API_BASE = window.API_BASE || window.location.origin;
     }
 
     function renderProjectsForCurrentFilter() {
+        if (isFreelancer(currentUser)) {
+            renderFreelancerBidding();
+            return;
+        }
         const completedSection = document.getElementById('completedOrdersSection');
         const completedBiddingList = document.getElementById('completedBiddingList');
         const completedGigList = document.getElementById('completedGigList');
@@ -582,6 +658,9 @@ var API_BASE = window.API_BASE || window.location.origin;
                 })
             );
 
+            // Cache bids for detail modal usage
+            bidsWithProfiles.forEach(b => { ordersBidCache[b.id] = b; });
+
             const projectTitle = project && project.title ? project.title : 'Dự án';
             const currentStatus = project && project.status ? String(project.status).toLowerCase() : '';
 
@@ -608,12 +687,15 @@ var API_BASE = window.API_BASE || window.location.origin;
                                                 ${profile ? `<a href="freelancer_profile.html?id=${profile.user_id}" target="_blank" style="color: var(--primary-color); text-decoration: none;">${profile.headline || 'Freelancer'}</a>` : `Freelancer #${bid.freelancer_id}`}
                                             </h3>
                                             <p style="color: var(--text-secondary); margin: 0.5rem 0;">
-                                                <strong>Giá đề xuất:</strong> ${formatCurrency(bid.price)} |
+                                                <strong>Giá đề xuất:</strong> ${formatNumberVND(bid.price)} |
                                                 <strong>Thời gian hoàn thành:</strong> ${bid.timeline_days} ngày
                                             </p>
                                         </div>
                                         <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
-                                            <button class="btn btn-primary btn-small" onclick="startChat(${bid.freelancer_id}, ${projectId})" title="Nhắn tin">
+                                            <button class="btn btn-primary btn-small" onclick="openBidDetailModalOrders(${projectId}, ${bid.id})" title="Xem chi tiết">
+                                                <i class="fas fa-eye"></i> Xem chi tiết
+                                            </button>
+                                            <button class="btn btn-secondary btn-small" onclick="startChat(${bid.freelancer_id}, ${projectId})" title="Nhắn tin">
                                                 <i class="fas fa-comment"></i> Nhắn tin
                                             </button>
                                             ${currentStatus === 'open' ? `
@@ -623,12 +705,6 @@ var API_BASE = window.API_BASE || window.location.origin;
                                             ` : ''}
                                         </div>
                                     </div>
-                                    ${bid.cover_letter ? `
-                                        <div style="background: var(--bg-gray); padding: 1rem; border-radius: var(--radius-md); margin-top: 1rem;">
-                                            <strong>Thư giới thiệu:</strong>
-                                            <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); white-space: pre-wrap;">${bid.cover_letter}</p>
-                                        </div>
-                                    ` : ''}
                                 </div>
                             `;
                             }).join('')}
@@ -642,6 +718,109 @@ var API_BASE = window.API_BASE || window.location.origin;
         } catch (error) {
             console.error('Error loading bids:', error);
             alert('Có lỗi xảy ra khi tải danh sách người apply.');
+        }
+    };
+
+    // ================= FREELANCER BIDDING VIEW =================
+    function renderFreelancerBidding(){
+        const freelSection = document.getElementById('freelancerBiddingSection');
+        const clientSection = document.getElementById('clientBiddingSection');
+        if (freelSection) freelSection.style.display = 'block';
+        if (clientSection) clientSection.style.display = 'none';
+
+        // Subtab switching
+        const panelActive = document.getElementById('freelancerActiveList');
+        const panelProposals = document.getElementById('freelancerProposalsList');
+        // use subtab header (distinct class to avoid top-level tab listeners)
+        const header = freelSection ? freelSection.querySelector('.orders-subtab-header') : null;
+        if (header) {
+            header.addEventListener('click', function(e){
+                const btn = e.target.closest('button.orders-subtab-btn[data-subtab]');
+                if (!btn) return;
+                const which = btn.dataset.subtab;
+                header.querySelectorAll('button.orders-subtab-btn').forEach(b => b.classList.toggle('active', b === btn));
+                if (which === 'freelancer-active') {
+                    panelActive.style.display = '';
+                    panelProposals.style.display = 'none';
+                } else {
+                    panelActive.style.display = 'none';
+                    panelProposals.style.display = '';
+                }
+            });
+            // ensure default state
+            panelActive.style.display = '';
+            panelProposals.style.display = 'none';
+        }
+
+        // Render active assigned jobs
+        if (panelActive) {
+            panelActive.innerHTML = (freelancerAssigned && freelancerAssigned.length)
+                ? freelancerAssigned.map(p => `
+                    <div class="card project-card" data-project-id="${p.id}">
+                        <div class="project-card-header">
+                            <h3>${p.title || `Dự án #${p.id}`}</h3>
+                            ${statusChip(p.status)}
+                        </div>
+                        <div class="project-card-meta">
+                            <div class="meta-row">
+                                <span><i class="fas fa-coins"></i> Giá: ${formatNumberVND(p.budget)}</span>
+                                <span><i class="fas fa-calendar-check"></i> Deadline: ${formatDate(p.deadline)}</span>
+                            </div>
+                        </div>
+                        <div class="project-card-actions">
+                            <a class="btn btn-primary btn-small" href="workspace.html?project_id=${p.id}"><i class="fas fa-briefcase"></i> Vào Workspace</a>
+                        </div>
+                    </div>
+                `).join('')
+                : `<p class="text-muted">Chưa có dự án nào đang thực hiện.</p>`;
+        }
+
+        // Render sent proposals
+        if (panelProposals) {
+            panelProposals.innerHTML = (freelancerProposals && freelancerProposals.length)
+                ? freelancerProposals.map(({project: p, bid}) => `
+                    <div class="card project-card" data-project-id="${p.id}">
+                        <div class="project-card-header">
+                            <h3>${p.title || `Dự án #${p.id}`}</h3>
+                            <span class="status-tag">Đã nộp hồ sơ</span>
+                        </div>
+                        <div class="project-card-meta">
+                            <div class="meta-row">
+                                <span><i class="fas fa-coins"></i> Giá đã chào: ${formatNumberVND(bid.price)}</span>
+                                <span><i class="fas fa-calendar"></i> Thời gian: ${bid.timeline_days} ngày</span>
+                            </div>
+                        </div>
+                        <div class="project-card-actions">
+                            <button class="btn btn-primary btn-small" onclick="openBidDetailModalOrders(${p.id}, ${bid.id})"><i class="fas fa-eye"></i> Xem chi tiết</button>
+                            <a class="btn btn-secondary btn-small" href="apply_project.html?project_id=${p.id}&mode=edit"><i class="fas fa-edit"></i> Chỉnh sửa</a>
+                            <button class="btn btn-danger btn-small" onclick="withdrawProposal(${p.id}, ${bid.id})"><i class="fas fa-times"></i> Rút đơn</button>
+                        </div>
+                    </div>
+                `).join('')
+                : `<p class="text-muted">Chưa có hồ sơ đã nộp.</p>`;
+        }
+    }
+
+    window.withdrawProposal = async function(projectId, bidId){
+        const token = getToken();
+        if (!token) return;
+        if (!confirm('Bạn chắc chắn muốn rút hồ sơ thầu?')) return;
+        try {
+            const resp = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids/${bidId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (resp.status === 204) {
+                alert('Đã rút hồ sơ.');
+                // cập nhật danh sách proposals
+                freelancerProposals = freelancerProposals.filter(x => x.project.id !== projectId);
+                renderFreelancerBidding();
+            } else {
+                const err = await resp.json().catch(()=>({}));
+                alert(err.detail || 'Không thể rút hồ sơ.');
+            }
+        } catch (e) {
+            alert('Lỗi kết nối, không thể rút hồ sơ.');
         }
     };
 
@@ -759,5 +938,76 @@ var API_BASE = window.API_BASE || window.location.origin;
             fetchProjects();
         }
     });
+
+    // ===== Detail modal for Orders (bids) =====
+    window.openBidDetailModalOrders = function(projectId, bidId) {
+        const bid = ordersBidCache[bidId];
+        if (!bid) return;
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        const coverFull = cleanCoverLetterDisplay(bid.cover_letter);
+        const ms = extractBidMilestones(bid);
+        const msHtml = ms && ms.length ? (`
+            <div>
+                <table class="table table-sm table-borderless" style="width:100%; font-size: 0.95rem;">
+                    <thead class="border-bottom">
+                        <tr>
+                            <th style="text-align:left;">Giai đoạn</th>
+                            <th style="text-align:right;">Chi phí</th>
+                            <th style="text-align:right;">Hạn chót</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${ms.map(m => `
+                            <tr>
+                                <td>${(m.title || '').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</td>
+                                <td style="text-align:right; font-weight:600;">${formatNumberVND(m.amount || 0)}</td>
+                                <td style="text-align:right;">${m.deadline ? new Date(m.deadline).toLocaleDateString('vi-VN') : ''}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                    <tfoot class="border-top">
+                        <tr>
+                            <td style="font-weight:600;">TỔNG CỘNG</td>
+                            <td style="text-align:right; font-weight:700;">${formatNumberVND(bid.price || 0)}</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        `) : '<p class=\"text-muted\">Chưa có lộ trình chi tiết.</p>';
+
+        overlay.innerHTML = `
+            <div class="modal-content" style="max-width: 760px; max-height: 90vh; overflow-y: auto;">
+                <div class="modal-header">
+                    <h2>Chi tiết hồ sơ thầu</h2>
+                    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <div style="display:flex; gap:8px; margin-bottom:12px;">
+                        <button id="ordersTabCover" class="btn btn-primary btn-small">Thư ứng tuyển</button>
+                        <button id="ordersTabMs" class="btn btn-secondary btn-small">Lộ trình & Chi phí</button>
+                    </div>
+                    <div id="ordersBidDetailBody"></div>
+                    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+                        <button class="btn btn-success" onclick="acceptBid(${projectId}, ${bidId})"><i class="fas fa-check-circle"></i> Duyệt & Đặt cọc</button>
+                        <button class="btn btn-outline" onclick="this.closest('.modal-overlay').remove()">Đóng</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        const body = overlay.querySelector('#ordersBidDetailBody');
+        function render(which){
+            if (which === 'cover') {
+                body.innerHTML = `<div style="background:white; padding:1rem; border:1px solid #e5e7eb; border-radius:8px; white-space:pre-wrap;">${(coverFull || 'Không có thư ứng tuyển').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
+            } else {
+                body.innerHTML = msHtml;
+            }
+        }
+        render('cover');
+        overlay.querySelector('#ordersTabCover').onclick = () => render('cover');
+        overlay.querySelector('#ordersTabMs').onclick = () => render('ms');
+    };
 })();
 

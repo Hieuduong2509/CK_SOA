@@ -47,7 +47,8 @@
 
             <div id="ordersTabBidding" class="orders-tab-panel active">
                 <div class="gig-orders-wrapper">
-                    <section class="gig-section">
+                    <!-- Client view block -->
+                    <section id="clientBiddingSection" class="gig-section">
                         <header class="gig-section-header">
                             <div>
                                 <h3>Đang xử lý</h3>
@@ -56,6 +57,19 @@
                         </header>
                         <div id="biddingActiveList" class="orders-grid">
                             <p class="text-muted">Đang tải dữ liệu...</p>
+                        </div>
+                    </section>
+                    <!-- Freelancer view block -->
+                    <section id="freelancerBiddingSection" class="gig-section" style="display:none;">
+                        <div class="orders-subtab-header" style="margin-bottom: 0.75rem;">
+                            <button class="orders-subtab-btn active" data-subtab="freelancer-active"><i class="fas fa-briefcase"></i> Đang thực hiện</button>
+                            <button class="orders-subtab-btn" data-subtab="freelancer-proposals"><i class="fas fa-file-signature"></i> Hồ sơ đã nộp</button>
+                        </div>
+                        <div id="freelancerActiveList" class="orders-grid">
+                            <p class="text-muted">Đang tải dữ liệu...</p>
+                        </div>
+                        <div id="freelancerProposalsList" class="orders-grid" style="display:none;">
+                            <p class="text-muted">Chưa có hồ sơ nào.</p>
                         </div>
                     </section>
                 </div>

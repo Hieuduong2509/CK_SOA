@@ -91,12 +91,18 @@ var API_BASE = window.API_BASE || window.location.origin;
                             <strong>${statusLabel}</strong>
                         </div>
                         <div class="order-actions">
-                            <a class="btn btn-outline btn-small" href="browse_projects.html">
-                                <i class="fas fa-briefcase"></i> Tìm thêm việc
-                            </a>
-                            <a class="btn btn-primary btn-small" href="${workspaceLink}">
-                                <i class="fas fa-door-open"></i> Vào workspace
-                            </a>
+                            ${
+                                entry.order_state === 'active'
+                                ? `<a class="btn btn-primary btn-small" href="${workspaceLink}">
+                                       <i class="fas fa-door-open"></i> Vào workspace
+                                   </a>`
+                                : `<a class="btn btn-secondary btn-small" href="apply_project.html?project_id=${project.id}&bid_id=${entry.bid_id}&mode=edit">
+                                       <i class="fas fa-edit"></i> Sửa báo giá
+                                   </a>
+                                   <a class="btn btn-outline btn-small" href="browse_projects.html">
+                                       <i class="fas fa-briefcase"></i> Tìm thêm việc
+                                   </a>`
+                            }
                         </div>
                     </footer>
                 </article>

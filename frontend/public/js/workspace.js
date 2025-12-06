@@ -10,6 +10,11 @@ let currentFreelancerProfile = null;
 let hasSubmittedReview = false;
 const profileCache = {};
 
+(function () {
+// Prevent double-apply
+if (window.__workspaceOverridesApplied) return;
+window.__workspaceOverridesApplied = true;
+
 // ======================================================================
 // Overrides appended by assistant: improved workspace helpers and flows
 // These definitions supersede earlier ones with the same name.
@@ -34,6 +39,32 @@ function cleanCoverLetterDisplay(text) {
   if (!text) return '';
   const parts = String(text).split('DATA_JSON:');
   return parts[0].trim();
+}
+
+// Excerpt helper for 2-line summary (approx by character limit)
+function coverLetterExcerpt(text, maxChars = 220){
+  const t = cleanCoverLetterDisplay(text || '');
+  if (!t) return '';
+  return t.length <= maxChars ? t : (t.slice(0, maxChars).trim() + '...');
+}
+// --- HELPER: lấy mảng milestones từ bid (ưu tiên cột JSON, fallback cover_letter) ---
+function extractBidMilestones(bid) {
+  try {
+    if (bid && Array.isArray(bid.milestones) && bid.milestones.length) {
+      return bid.milestones;
+    }
+    if (bid && bid.cover_letter && bid.cover_letter.includes('DATA_JSON:')) {
+      const parts = String(bid.cover_letter).split('DATA_JSON:');
+      const jsonStr = (parts[1] || '').trim();
+      if (jsonStr) {
+        const data = JSON.parse(jsonStr);
+        if (Array.isArray(data)) return data;
+      }
+    }
+  } catch (e) {
+    console.warn('extractBidMilestones parse error', e);
+  }
+  return [];
 }
 
 function ensureProjectActionList() {
@@ -222,9 +253,21 @@ async function loadWorkspace(projectId){
       } else if (isProjectFreelancer) {
         if (typeof setupDeliveryControlsForFreelancer === 'function') setupDeliveryControlsForFreelancer();
       }
+      // Hide bidders tab for non-client users
+      if (!userIsClient) {
+        const biddersBtn = document.querySelector('.tab-btn[data-tab="bidders"]');
+        const biddersPane = document.getElementById('tab-bidders');
+        if (biddersBtn) biddersBtn.style.display = 'none';
+        if (biddersPane) biddersPane.style.display = 'none';
+      }
     } else if (userIsFreelancer) {
       setupFreelancerView();
       if (typeof preloadWorkspaceShowcase === 'function') preloadWorkspaceShowcase(currentProject, projectId);
+      // Ensure bidders tab hidden in read-only view
+      const biddersBtn = document.querySelector('.tab-btn[data-tab="bidders"]');
+      const biddersPane = document.getElementById('tab-bidders');
+      if (biddersBtn) biddersBtn.style.display = 'none';
+      if (biddersPane) biddersPane.style.display = 'none';
     } else {
       alert('Bạn không có quyền truy cập workspace này.');
       window.location.href = 'index.html';
@@ -247,6 +290,15 @@ function setupParticipantView(){
 
 // --- LOAD BIDDERS ---
 async function loadBidders(projectId){
+  // Only clients (owner) can view/manage bidders
+  const user = currentUser || (typeof getCurrentUserProfile === 'function' && getCurrentUserProfile());
+  const project = currentProject || await getProject(projectId).catch(()=>null);
+  const isClientOwner = user && project && user.id === project.client_id && getUserRole(user) === 'client';
+  if (!isClientOwner) {
+    const biddersList = document.getElementById('biddersList');
+    if (biddersList) biddersList.innerHTML = '<p class=\"text-muted\" style=\"padding:1rem;\">Bạn không có quyền xem danh sách ứng viên.</p>';
+    return;
+  }
   const biddersList = document.getElementById('biddersList');
   if (!biddersList) return;
   biddersList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Đang tải...</p>';
@@ -282,9 +334,7 @@ async function loadBidders(projectId){
     );
     biddersList.innerHTML = bidsWithProfiles.map(bid => {
       const profile = bid.profile;
-      const projectStatus = ((project && project.status) || '').toLowerCase();
-      const canAccept = projectStatus === 'open' || projectStatus === 'pending_approval';
-      const displayCoverLetter = cleanCoverLetterDisplay(bid.cover_letter);
+      const excerpt = coverLetterExcerpt(bid.cover_letter, 220);
       return `
         <div class="bidder-card" style="border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1rem; background: var(--bg-gray);">
           <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:1rem;">
@@ -297,19 +347,18 @@ async function loadBidders(projectId){
               </p>
             </div>
             <div style="display:flex;gap:0.5rem;flex-shrink:0;flex-direction:column;">
-              <button class="btn btn-primary btn-small" onclick="startChatWithBidder(${bid.freelancer_id}, ${projectId})" title="Nhắn tin" style="white-space:nowrap;">
+              <button class="btn btn-primary btn-small" onclick="openBidDetailModal(${projectId}, ${bid.id})" title="Xem chi tiết" style="white-space:nowrap;">
+                <i class="fas fa-eye"></i> Xem chi tiết
+              </button>
+              <button class="btn btn-secondary btn-small" onclick="startChatWithBidder(${bid.freelancer_id}, ${projectId})" title="Nhắn tin" style="white-space:nowrap;">
                 <i class="fas fa-comment"></i> Nhắn tin
               </button>
-              ${canAccept ? `
-                <button class="btn btn-success btn-small" onclick="acceptBid(${projectId}, ${bid.id})" title="Duyệt" style="white-space:nowrap;">
-                  <i class="fas fa-check"></i> Duyệt
-                </button>` : ''}
             </div>
           </div>
-          ${displayCoverLetter ? `
+          ${excerpt ? `
             <div style="background:white; padding:1rem; border-radius:var(--radius-md); margin-top:1rem; border-left:3px solid var(--primary-color);">
-              <strong style="color:var(--text-primary); font-size:0.875rem;">Thư giới thiệu & Kế hoạch:</strong>
-              <p style="margin:0.5rem 0 0 0; color:var(--text-secondary); white-space:pre-wrap; font-size:0.9375rem; line-height:1.6;">${escapeHtml(displayCoverLetter)}</p>
+              <strong style="color:var(--text-primary); font-size:0.875rem;">Thư chào (tóm tắt):</strong>
+              <p style="margin:0.5rem 0 0 0; color:var(--text-secondary); white-space:pre-wrap; font-size:0.9375rem; line-height:1.6;">${escapeHtml(excerpt)}</p>
             </div>` : ''}
         </div>`;
     }).join('');
@@ -524,13 +573,68 @@ function displayMessage(message){
     const messageId = message.id ? String(message.id) : null;
     if (messageId && displayedMessageIds.has(messageId)) return;
     if (messageId) displayedMessageIds.add(messageId);
+
+    // Clean message content and extract milestones if embedded via DATA_JSON
+    const rawContent = String(message.content || '');
+    let textPart = rawContent;
+    let embeddedMs = null;
+    if (rawContent.includes('DATA_JSON:')){
+      const parts = rawContent.split('DATA_JSON:');
+      textPart = parts[0].trim();
+      try {
+        const parsed = JSON.parse((parts[1] || '').trim());
+        if (Array.isArray(parsed)) embeddedMs = parsed;
+      } catch(_) {}
+    }
+
     const messageDiv = document.createElement('div');
     messageDiv.className = 'workspace-message-row';
     messageDiv.style.cssText = `display:flex;flex-direction:column;align-items:${isCurrentUser?'flex-end':'flex-start'};margin-bottom:0.75rem;width:100%;`;
     const bubbleStyle = isCurrentUser
       ? `background: linear-gradient(135deg, var(--primary-color) 0%, #6a82fb 100%); color: white; border-radius: 1rem 1rem 0.25rem 1rem;`
       : `background: #f1f3f5; color: #1a202c; border-radius: 1rem 1rem 1rem 0.25rem;`;
-    messageDiv.innerHTML = `<div style="${bubbleStyle} padding:0.75rem 1rem; box-shadow:0 2px 4px rgba(0,0,0,0.1); max-width:80%; word-wrap:break-word;">${escapeHtml(message.content)}</div>`;
+
+    // Build milestones HTML if present
+    let milestonesHtml = '';
+    if (embeddedMs && embeddedMs.length){
+      const total = embeddedMs.reduce((sum, m) => sum + (Number(m.amount)||0), 0);
+      milestonesHtml = `
+        <div style="margin-top: 0.5rem;">
+          <table class="table table-sm table-borderless" style="width:100%; font-size: 0.85rem;">
+            <thead class="border-bottom">
+              <tr>
+                <th style="text-align:left;">Giai đoạn</th>
+                <th style="text-align:right;">Chi phí</th>
+                <th style="text-align:right;">Hạn chót</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${embeddedMs.map(m => `
+                <tr>
+                  <td>${escapeHtml(m.title || '')}</td>
+                  <td style="text-align:right; font-weight:600;">${formatCurrency(m.amount || 0)}</td>
+                  <td style="text-align:right;">${m.deadline ? new Date(m.deadline).toLocaleDateString('vi-VN') : ''}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+            <tfoot class="border-top">
+              <tr>
+                <td style="font-weight:600;">TỔNG CỘNG</td>
+                <td style="text-align:right; font-weight:700;">${formatCurrency(total)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      `;
+    }
+
+    messageDiv.innerHTML = `
+      <div style="${bubbleStyle} padding:0.75rem 1rem; box-shadow:0 2px 4px rgba(0,0,0,0.1); max-width:80%; word-wrap:break-word;">
+        ${escapeHtml(textPart)}
+        ${milestonesHtml}
+      </div>
+    `;
     messagesList.appendChild(messageDiv);
     setTimeout(() => messagesList.scrollTop = messagesList.scrollHeight, 100);
   }catch(_){}
@@ -581,6 +685,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const sendBtn = document.getElementById('sendMessageBtn');
   if (sendBtn) sendBtn.addEventListener('click', sendMessage);
 });
+
+})(); // end overrides IIFE
 
 function ensureProjectActionList() {
     const actionsDiv = document.getElementById('projectActions');
@@ -1656,22 +1762,23 @@ async function loadBidders(projectId) {
                             </p>
                         </div>
                         <div style="display: flex; gap: 0.5rem; flex-shrink: 0; flex-direction: column;">
-                            <button class="btn btn-primary btn-small" onclick="startChatWithBidder(${bid.freelancer_id}, ${projectId})" title="Nhắn tin" style="white-space: nowrap;">
+                            <button class="btn btn-primary btn-small" onclick="openBidDetailModal(${projectId}, ${bid.id})" title="Xem chi tiết" style="white-space: nowrap;">
+                                <i class="fas fa-eye"></i> Xem chi tiết
+                            </button>
+                            <button class="btn btn-secondary btn-small" onclick="startChatWithBidder(${bid.freelancer_id}, ${projectId})" title="Nhắn tin" style="white-space: nowrap;">
                                 <i class="fas fa-comment"></i> Nhắn tin
                             </button>
-                            ${canAccept ? `
-                                <button class="btn btn-success btn-small" onclick="acceptBid(${projectId}, ${bid.id})" title="Duyệt" style="white-space: nowrap;">
-                                    <i class="fas fa-check"></i> Duyệt
-                                </button>
-                            ` : ''}
                         </div>
                     </div>
-                    ${bid.cover_letter ? `
-                        <div style="background: white; padding: 1rem; border-radius: var(--radius-md); margin-top: 1rem; border-left: 3px solid var(--primary-color);">
-                            <strong style="color: var(--text-primary); font-size: 0.875rem;">Thư giới thiệu:</strong>
-                            <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); white-space: pre-wrap; font-size: 0.9375rem; line-height: 1.6;">${bid.cover_letter}</p>
-                        </div>
-                    ` : ''}
+                    ${(() => {
+                        const excerpt = coverLetterExcerpt(bid.cover_letter, 220);
+                        return excerpt ? `
+                            <div style="background: white; padding: 1rem; border-radius: var(--radius-md); margin-top: 1rem; border-left: 3px solid var(--primary-color);">
+                                <strong style="color: var(--text-primary); font-size: 0.875rem;">Thư chào (tóm tắt):</strong>
+                                <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); white-space: pre-wrap; font-size: 0.9375rem; line-height: 1.6;">${escapeHtml(excerpt)}</p>
+                            </div>
+                        ` : '';
+                    })()}
                 </div>
             `;
         }).join('');
@@ -2920,6 +3027,36 @@ async function loadBidders(projectId) {
             
             // SỬ DỤNG HÀM CLEAN DATA TẠI ĐÂY
             const displayCoverLetter = cleanCoverLetterDisplay(bid.cover_letter);
+            const ms = extractBidMilestones(bid);
+            const milestonesHtml = ms && ms.length ? (`
+                <div style="margin-top: 0.75rem;">
+                    <table class="table table-sm table-borderless" style="width:100%; font-size: 0.9rem;">
+                        <thead class="border-bottom">
+                            <tr>
+                                <th style="text-align:left;">Giai đoạn</th>
+                                <th style="text-align:right;">Chi phí</th>
+                                <th style="text-align:right;">Hạn chót</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${ms.map(m => `
+                                <tr>
+                                    <td>${escapeHtml(m.title || '')}</td>
+                                    <td style="text-align:right; font-weight:600; color:#16a34a;">${formatCurrency(m.amount || 0)}</td>
+                                    <td style="text-align:right; color:#6b7280;">${m.deadline ? new Date(m.deadline).toLocaleDateString('vi-VN') : ''}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                        <tfoot class="border-top">
+                            <tr>
+                                <td style="font-weight:600;">TỔNG CỘNG</td>
+                                <td style="text-align:right; color:#1d4ed8; font-weight:700;">${formatCurrency(bid.price || 0)}</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            `) : '';
 
             return `
                 <div class="bidder-card" style="border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1rem; background: var(--bg-gray);">
@@ -2946,22 +3083,23 @@ async function loadBidders(projectId) {
                             </p>
                         </div>
                         <div style="display: flex; gap: 0.5rem; flex-shrink: 0; flex-direction: column;">
-                            <button class="btn btn-primary btn-small" onclick="startChatWithBidder(${bid.freelancer_id}, ${projectId})" title="Nhắn tin" style="white-space: nowrap;">
+                            <button class="btn btn-primary btn-small" onclick="openBidDetailModal(${projectId}, ${bid.id})" title="Xem chi tiết" style="white-space: nowrap;">
+                                <i class="fas fa-eye"></i> Xem chi tiết
+                            </button>
+                            <button class="btn btn-secondary btn-small" onclick="startChatWithBidder(${bid.freelancer_id}, ${projectId})" title="Nhắn tin" style="white-space: nowrap;">
                                 <i class="fas fa-comment"></i> Nhắn tin
                             </button>
-                            ${canAccept ? `
-                                <button class="btn btn-success btn-small" onclick="acceptBid(${projectId}, ${bid.id})" title="Duyệt" style="white-space: nowrap;">
-                                    <i class="fas fa-check"></i> Duyệt
-                                </button>
-                            ` : ''}
                         </div>
                     </div>
-                    ${displayCoverLetter ? `
-                        <div style="background: white; padding: 1rem; border-radius: var(--radius-md); margin-top: 1rem; border-left: 3px solid var(--primary-color);">
-                            <strong style="color: var(--text-primary); font-size: 0.875rem;">Thư giới thiệu & Kế hoạch:</strong>
-                            <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); white-space: pre-wrap; font-size: 0.9375rem; line-height: 1.6;">${escapeHtml(displayCoverLetter)}</p>
-                        </div>
-                    ` : ''}
+                    ${(() => {
+                        const excerpt = coverLetterExcerpt(bid.cover_letter, 220);
+                        return excerpt ? `
+                            <div style="background: white; padding: 1rem; border-radius: var(--radius-md); margin-top: 1rem; border-left: 3px solid var(--primary-color);">
+                                <strong style="color: var(--text-primary); font-size: 0.875rem;">Thư chào (tóm tắt):</strong>
+                                <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); white-space: pre-wrap; font-size: 0.9375rem; line-height: 1.6;">${escapeHtml(excerpt)}</p>
+                            </div>
+                        ` : '';
+                    })()}
                 </div>
             `;
         }).join('');
@@ -3011,3 +3149,113 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // All functions are already exposed immediately after definition above
+
+// ================== BID DETAIL MODAL (Progressive Disclosure) ==================
+function ensureBidDetailModal(){
+    let modal = document.getElementById('bidDetailModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'bidDetailModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;z-index:1000;';
+    modal.innerHTML = `
+      <div style="background:white; width: 880px; max-width: 95vw; border-radius: 12px; overflow:hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+          <h3 style="margin:0;font-size:1.125rem;">Chi tiết hồ sơ thầu</h3>
+          <button id="bidDetailCloseBtn" class="btn btn-outline btn-small">&times;</button>
+        </div>
+        <div style="padding: 0 20px 20px;">
+          <div style="display:flex;gap:8px;margin:16px 0;">
+            <button id="tabCoverBtn" class="btn btn-primary btn-small">Thư ứng tuyển</button>
+            <button id="tabMsBtn" class="btn btn-secondary btn-small">Lộ trình & Chi phí</button>
+          </div>
+          <div id="bidDetailBody" style="min-height:220px;"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+            <button id="approveAndDepositBtn" class="btn btn-success"><i class="fas fa-check-circle"></i> Duyệt & Đặt cọc</button>
+            <button id="bidDetailCloseBtn2" class="btn btn-outline">Đóng</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#bidDetailCloseBtn').onclick = closeBidDetailModal;
+    modal.querySelector('#bidDetailCloseBtn2').onclick = closeBidDetailModal;
+    return modal;
+}
+
+async function openBidDetailModal(projectId, bidId){
+    const modal = ensureBidDetailModal();
+    modal.style.display = 'flex';
+    const body = modal.querySelector('#bidDetailBody');
+    body.innerHTML = '<p style="text-align:center;color:#6b7280;padding:1.5rem;"><i class="fas fa-spinner fa-spin"></i> Đang tải...</p>';
+
+    try{
+        const token = localStorage.getItem('access_token');
+        const resp = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!resp.ok) throw new Error('Failed to fetch bids');
+        const list = await resp.json();
+        const bid = list.find(b => b.id === Number(bidId));
+        if (!bid){ body.innerHTML = '<p style="color:#ef4444;">Không tìm thấy hồ sơ thầu.</p>'; return; }
+
+        const coverFull = cleanCoverLetterDisplay(bid.cover_letter);
+        const ms = extractBidMilestones(bid);
+        const msHtml = ms && ms.length ? (`
+          <div>
+            <table class="table table-sm table-borderless" style="width:100%; font-size: 0.95rem;">
+              <thead class="border-bottom">
+                <tr>
+                  <th style="text-align:left;">Giai đoạn</th>
+                  <th style="text-align:right;">Chi phí</th>
+                  <th style="text-align:right;">Hạn chót</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${ms.map(m => `
+                  <tr>
+                    <td>${escapeHtml(m.title || '')}</td>
+                    <td style="text-align:right; font-weight:600; color:#16a34a;">${formatCurrency(m.amount || 0)}</td>
+                    <td style="text-align:right; color:#6b7280;">${m.deadline ? new Date(m.deadline).toLocaleDateString('vi-VN') : ''}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+              <tfoot class="border-top">
+                <tr>
+                  <td style="font-weight:600;">TỔNG CỘNG</td>
+                  <td style="text-align:right; color:#1d4ed8; font-weight:700;">${formatCurrency(bid.price || 0)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        `) : '<p style="color:#6b7280;">Freelancer chưa cung cấp lộ trình chi tiết.</p>';
+
+        function renderTab(which){
+          if (which === 'cover'){
+            body.innerHTML = `
+              <div style="background:white; padding: 1rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+                <p style="margin:0; color:#374151; white-space:pre-wrap; line-height:1.7;">${escapeHtml(coverFull || 'Không có thư ứng tuyển')}</p>
+              </div>`;
+          } else {
+            body.innerHTML = msHtml;
+          }
+        }
+
+        renderTab('cover');
+        modal.querySelector('#tabCoverBtn').onclick = () => renderTab('cover');
+        modal.querySelector('#tabMsBtn').onclick = () => renderTab('ms');
+        modal.querySelector('#approveAndDepositBtn').onclick = async () => {
+          await acceptBid(projectId, bid.id);
+          closeBidDetailModal();
+          if (typeof switchTab === 'function') switchTab('milestones');
+          loadMilestones(projectId);
+        };
+    } catch (e){
+        console.error(e);
+        body.innerHTML = '<p style="color:#ef4444;">Không thể tải chi tiết hồ sơ thầu.</p>';
+    }
+}
+
+function closeBidDetailModal(){
+    const modal = document.getElementById('bidDetailModal');
+    if (modal) modal.style.display = 'none';
+}
+window.openBidDetailModal = openBidDetailModal;
+window.closeBidDetailModal = closeBidDetailModal;

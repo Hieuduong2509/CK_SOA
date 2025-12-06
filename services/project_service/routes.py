@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from database import get_db
 from schemas import (
-    ProjectCreate, ProjectUpdate, ProjectResponse, BidCreate, BidResponse,
+    ProjectCreate, ProjectUpdate, ProjectResponse, BidCreate, BidResponse, BidUpdate,
     AcceptBidRequest, MilestoneCreate, MilestoneResponse,
     MilestoneSubmissionCreate, RevisionRequest, FreelancerOrderResponse,
     ServiceOrderCreate, ProjectActivityResponse
@@ -15,7 +15,7 @@ from crud import (
     approve_milestone, request_revision, close_project, delete_project, approve_project,
     get_project_activities, deliver_project, request_revision_project, accept_delivery,
 )
-from models import Bid, Project, ProjectStatus, ProjectType, BudgetType, MilestoneStatus
+from models import Bid, Project, ProjectStatus, ProjectType, BudgetType, MilestoneStatus, BidStatus
 import httpx
 import os
 import pika
@@ -236,7 +236,7 @@ def create_project_from_service_endpoint(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing freelancer info")
     if freelancer_id == client_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot purchase own service")
-    
+
     delivery_days = service_data.get("delivery_days") or 0
     deadline = datetime.utcnow() + timedelta(days=delivery_days or 7)
 
@@ -297,9 +297,9 @@ def create_project_from_service_endpoint(
 
     publish_event("project.created", {"project_id": project_obj.id, "client_id": client_id, "type": "service_order"})
     publish_event("project.created_from_gig", {
-        "project_id": project_obj.id,
-        "client_id": client_id,
-        "freelancer_id": freelancer_id,
+            "project_id": project_obj.id,
+            "client_id": client_id,
+            "freelancer_id": freelancer_id,
         "service_name": service_data.get("name")
     })
     
@@ -445,7 +445,7 @@ def list_projects(
             query = query.filter(Project.project_type == project_type)
             
         projects = query.order_by(Project.created_at.desc()).all()
-
+    
     return [enrich_project_with_bids_count(p, db) for p in projects]
 
 
@@ -741,12 +741,12 @@ def accept_delivery_endpoint(
     # Release escrow for Gig
     milestones = get_milestones(db, project_id)
     if milestones:
-        try:
-            httpx.post(
-                f"{PAYMENTS_SERVICE_URL}/api/v1/payments/escrow/release",
+            try:
+                httpx.post(
+                    f"{PAYMENTS_SERVICE_URL}/api/v1/payments/escrow/release",
                 json={"escrow_id": milestones[0].escrow_id},
-                timeout=5.0
-            )
+                    timeout=5.0
+                )
         except: pass
         
     return enrich_project_with_bids_count(updated, db)
@@ -824,10 +824,10 @@ def delete_project_attachment(
     new_atts = [a for i, a in enumerate(attachments) if i != attachment_index]
     
     # Force update
-    from sqlalchemy.orm.attributes import flag_modified
+        from sqlalchemy.orm.attributes import flag_modified
     project.attachments = new_atts
     flag_modified(project, "attachments")
-    db.commit()
+        db.commit()
     
     return {"message": "Deleted", "project": project}
 
@@ -851,10 +851,11 @@ def download_project_attachment(
     return {"download_url": url}
 
 @router.put("/{project_id}/bids/{bid_id}", response_model=BidResponse)
+@router.patch("/{project_id}/bids/{bid_id}", response_model=BidResponse)
 def update_bid_endpoint(
     project_id: int,
     bid_id: int,
-    bid_update: BidCreate, # Tái sử dụng schema BidCreate
+    bid_update: BidUpdate,  # Chỉ cập nhật các trường cho phép
     db: Session = Depends(get_db),
     account=Depends(resolve_account)
 ):
@@ -874,10 +875,17 @@ def update_bid_endpoint(
     if bid.status != BidStatus.PENDING:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot edit bid after it is accepted or rejected")
 
-    # 4. Update dữ liệu
-    bid.price = bid_update.price
-    bid.timeline_days = bid_update.timeline_days
-    bid.cover_letter = bid_update.cover_letter
+    # 4. Update dữ liệu (chỉ các trường có gửi lên)
+    data = bid_update.dict(exclude_unset=True)
+    if "price" in data and data["price"] is not None:
+        bid.price = data["price"]
+    if "timeline_days" in data and data["timeline_days"] is not None:
+        bid.timeline_days = data["timeline_days"]
+    if "cover_letter" in data and data["cover_letter"] is not None:
+        bid.cover_letter = data["cover_letter"]
+    if "milestones" in data and data["milestones"] is not None:
+        # Lưu thẳng mảng milestones vào cột JSON
+        bid.milestones = [m.dict() for m in data["milestones"]]
     # bid.updated_at sẽ tự động cập nhật nhờ onupdate trong model (nếu có config), hoặc ta set tay:
     bid.updated_at = datetime.utcnow()
     
@@ -885,3 +893,113 @@ def update_bid_endpoint(
     db.refresh(bid)
     
     return bid
+
+
+@router.delete("/{project_id}/bids/{bid_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_bid_by_id_endpoint(
+    project_id: int,
+    bid_id: int,
+    db: Session = Depends(get_db),
+    account=Depends(resolve_account)
+):
+    """Freelancer withdraw their own pending bid by id."""
+    if not account:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+
+    bid = db.query(Bid).filter(Bid.id == bid_id, Bid.project_id == project_id).first()
+    if not bid:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bid not found")
+
+    if bid.freelancer_id != account.get("id"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only withdraw your own bids")
+
+    if bid.status != BidStatus.PENDING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot withdraw after it is accepted or rejected")
+
+    db.delete(bid)
+    db.commit()
+    return None
+
+
+@router.get("/{project_id}/bids/me", response_model=BidResponse)
+def get_my_bid_endpoint(
+    project_id: int,
+    db: Session = Depends(get_db),
+    account=Depends(resolve_account)
+):
+    if not account:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+
+    freelancer_id = account.get("id")
+    if not freelancer_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid account")
+
+    bid = db.query(Bid).filter(Bid.project_id == project_id, Bid.freelancer_id == freelancer_id).first()
+    if not bid:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bid not found")
+    return bid
+
+
+@router.put("/{project_id}/bids/me", response_model=BidResponse)
+@router.patch("/{project_id}/bids/me", response_model=BidResponse)
+def update_my_bid_endpoint(
+    project_id: int,
+    bid_update: BidUpdate,
+    db: Session = Depends(get_db),
+    account=Depends(resolve_account)
+):
+    if not account:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+
+    freelancer_id = account.get("id")
+    if not freelancer_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid account")
+
+    # Find current user's bid for this project
+    bid = db.query(Bid).filter(Bid.project_id == project_id, Bid.freelancer_id == freelancer_id).first()
+    if not bid:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bid not found")
+
+    if bid.status != BidStatus.PENDING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot edit bid after it is accepted or rejected")
+
+    data = bid_update.dict(exclude_unset=True)
+    if "price" in data and data["price"] is not None:
+        bid.price = data["price"]
+    if "timeline_days" in data and data["timeline_days"] is not None:
+        bid.timeline_days = data["timeline_days"]
+    if "cover_letter" in data and data["cover_letter"] is not None:
+        bid.cover_letter = data["cover_letter"]
+    if "milestones" in data and data["milestones"] is not None:
+        bid.milestones = [m.dict() for m in data["milestones"]]
+    bid.updated_at = datetime.utcnow()
+
+        db.commit()
+    db.refresh(bid)
+    return bid
+
+
+@router.delete("/{project_id}/bids/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_my_bid_endpoint(
+    project_id: int,
+    db: Session = Depends(get_db),
+    account=Depends(resolve_account)
+):
+    # Freelancer rút hồ sơ thầu của chính mình khi chưa được duyệt
+    if not account:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+
+    freelancer_id = account.get("id")
+    if not freelancer_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid account")
+
+    bid = db.query(Bid).filter(Bid.project_id == project_id, Bid.freelancer_id == freelancer_id).first()
+    if not bid:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bid not found")
+
+    if bid.status != BidStatus.PENDING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot withdraw after it is accepted or rejected")
+
+    db.delete(bid)
+    db.commit()
+    return None

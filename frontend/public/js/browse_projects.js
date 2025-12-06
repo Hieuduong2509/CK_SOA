@@ -4,7 +4,9 @@
     var state = {
         projects: [],
         filtered: [],
-        currentBidId: null // Lưu ID bid nếu đang sửa
+        currentBidId: null, // Lưu ID bid nếu đang sửa
+        myBidsByProjectId: {}, // { [projectId]: bid or null }
+        isFreelancer: false
     };
 
     var elements = {};
@@ -44,6 +46,34 @@
             if (!response.ok) throw new Error(`Failed to load projects (${response.status})`);
             
             state.projects = await response.json();
+            // Nếu đang đăng nhập là freelancer, lấy các bid của chính mình để hiển thị nút chỉnh sửa/rút hồ sơ
+            try {
+                const token = localStorage.getItem('access_token');
+                const meResp = token ? await fetch(`${API_BASE}/api/v1/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } }) : null;
+                const me = meResp && meResp.ok ? await meResp.json() : null;
+                const role = me && (typeof me.role === 'string' ? me.role : (me.role && (me.role.value || me.role.name)));
+                state.isFreelancer = String(role || '').toLowerCase() === 'freelancer';
+                if (state.isFreelancer) {
+                    const checks = state.projects.map(async (p) => {
+                        try {
+                            const r = await fetch(`${API_BASE}/api/v1/projects/${p.id}/bids/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+                            if (r.ok) {
+                                const bid = await r.json();
+                                state.myBidsByProjectId[p.id] = bid;
+                            } else {
+                                state.myBidsByProjectId[p.id] = null;
+                            }
+                        } catch(_) {
+                            state.myBidsByProjectId[p.id] = null;
+                        }
+                    });
+                    await Promise.all(checks);
+                } else {
+                    state.myBidsByProjectId = {};
+                }
+            } catch(_) {
+                state.myBidsByProjectId = {};
+            }
             applyFilters();
         } catch (error) {
             console.error('Error loading projects:', error);
@@ -105,9 +135,12 @@
     function renderProjectCard(project) {
         // ... (Giữ nguyên logic render card cũ) ...
         const budgetType = project.budget_type === 'HOURLY' ? 'Theo giờ' : 'Trọn gói';
-        const budgetValue = formatCurrency(project.budget);
+        // Bảo mật ngân sách: freelancer không thấy ngân sách khi dự án còn OPEN
+        const showBudget = !state.isFreelancer;
+        const budgetValue = showBudget ? formatCurrency(project.budget) : '—';
         const skills = (project.skills_required || project.tags || []).slice(0, 6);
         const createdAt = project.created_at ? new Date(project.created_at).toLocaleDateString('vi-VN') : 'Chưa rõ';
+        const myBid = state.myBidsByProjectId[project.id];
 
         return `
             <article class="project-card">
@@ -127,7 +160,12 @@
                 ${skills.length ? `<div class="tag-list">${skills.map(s => `<span class="category-tag">${s}</span>`).join('')}</div>` : ''}
                 <div class="project-card-actions">
                     <button class="btn btn-outline btn-small" data-action="view" data-id="${project.id}"><i class="fas fa-eye"></i> Xem chi tiết</button>
-                    <button class="btn btn-primary btn-small" data-action="bid" data-id="${project.id}"><i class="fas fa-paper-plane"></i> Ứng tuyển / Xem</button>
+                    ${myBid ? `
+                        <button class="btn btn-primary btn-small" data-action="bid" data-id="${project.id}"><i class="fas fa-edit"></i> Chỉnh sửa hồ sơ</button>
+                        <button class="btn btn-danger btn-small" data-action="withdraw" data-id="${project.id}"><i class="fas fa-times"></i> Rút hồ sơ</button>
+                    ` : `
+                        <button class="btn btn-primary btn-small" data-action="bid" data-id="${project.id}"><i class="fas fa-paper-plane"></i> Ứng tuyển</button>
+                    `}
                 </div>
             </article>
         `;
@@ -152,6 +190,7 @@
 
         if (action === 'view') window.location.href = `workspace.html?project_id=${projectId}`;
         else if (action === 'bid') openBidModal(projectId);
+        else if (action === 'withdraw') withdrawMyBid(projectId);
     }
 
     // --- CÁC HÀM XỬ LÝ MODAL & EDIT BID ---
@@ -161,6 +200,42 @@
         const milestoneSelect = document.getElementById('milestoneCount');
         if (priceInput) priceInput.oninput = () => generateMilestones();
         if (milestoneSelect) milestoneSelect.onchange = () => generateMilestones();
+    }
+
+    async function withdrawMyBid(projectId) {
+        const token = localStorage.getItem('access_token');
+        if (!token) { alert('Vui lòng đăng nhập để rút hồ sơ.'); return; }
+        if (!confirm('Bạn chắc chắn muốn rút hồ sơ thầu cho dự án này?')) return;
+        try {
+            // Tìm bid id hiện tại (ưu tiên cache)
+            let bidId = state.myBidsByProjectId[projectId]?.id || null;
+            if (!bidId) {
+                const meResp = await fetch(`${API_BASE}/api/v1/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const me = meResp.ok ? await meResp.json() : null;
+                const listResp = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const bids = listResp.ok ? await listResp.json() : [];
+                const my = me ? bids.find(b => b.freelancer_id === me.id) : null;
+                if (my) bidId = my.id;
+            }
+            if (!bidId) throw new Error('Không tìm thấy hồ sơ để rút.');
+
+            const resp = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids/${bidId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (resp.status === 204) {
+                alert('Đã rút hồ sơ thầu.');
+                state.myBidsByProjectId[projectId] = null;
+                renderProjects();
+            } else {
+                const errText = await resp.text().catch(()=> '');
+                let msg = 'Không thể rút hồ sơ.';
+                try { const j = JSON.parse(errText); if (j.detail) msg = j.detail; } catch(_) { if (errText) msg = errText; }
+                alert(msg);
+            }
+        } catch (e) {
+            alert('Lỗi kết nối. Không thể rút hồ sơ.');
+        }
     }
 
     // Hàm generateMilestones phiên bản "Thông minh" (Hỗ trợ load dữ liệu cũ)
@@ -237,7 +312,7 @@
                 targetDate = new Date(projectDeadline);
             }
 
-            const dateStr = targetDate.toISOString().split('T')[0];
+            let dateStr = targetDate.toISOString().split('T')[0];
             const maxDateStr = projectDeadline ? projectDeadline.toISOString().split('T')[0] : '';
             
             let amountVal = (i === count) ? (avgAmount + remainder) : avgAmount;
@@ -339,7 +414,8 @@
         const bidData = {
             price: price,
             timeline_days: maxDays > 0 ? maxDays : 7,
-            cover_letter: fullCoverLetter
+            cover_letter: fullCoverLetter,
+            milestones: milestones
         };
 
         submitBtn.disabled = true;
@@ -367,8 +443,41 @@
                 // Tải lại để cập nhật nút bấm nếu cần
                 // loadProjects(); 
             } else {
-                const errData = await response.json().catch(()=>({}));
-                throw new Error(errData.detail || 'Lỗi server');
+                // Nếu là 404 khi PUT /bids/{id}: có thể id lệch -> refetch và retry
+                if (response.status === 404 && method === 'PUT') {
+                    state.currentBidId = null;
+                    try {
+                        const tokenR = localStorage.getItem('access_token');
+                        const meResp = await fetch(`${API_BASE}/api/v1/auth/me`, { headers: { 'Authorization': `Bearer ${tokenR}` } });
+                        const me = meResp.ok ? await meResp.json() : null;
+                        const listResp = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, { headers: { 'Authorization': `Bearer ${tokenR}` } });
+                        const bids = listResp.ok ? await listResp.json() : [];
+                        const my = me ? bids.find(b => b.freelancer_id === me.id) : null;
+                        if (my) {
+                            state.currentBidId = my.id;
+                            const retry = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids/${state.currentBidId}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenR}` },
+                                body: JSON.stringify(bidData)
+                            });
+                            if (retry.ok) {
+                                alert('Cập nhật thành công!');
+                                closeBidModal();
+                                return;
+                            }
+                        }
+                    } catch(_) {}
+                }
+
+                const errText = await response.text().catch(()=>'');
+                let errMsg = 'Lỗi server';
+                try {
+                    const errJson = JSON.parse(errText);
+                    errMsg = errJson.detail || errMsg;
+                } catch(_) {
+                    errMsg = errText || errMsg;
+                }
+                throw new Error(errMsg);
             }
         } catch (error) {
             if(errorDiv) {
@@ -397,6 +506,11 @@
         const modalTitle = document.querySelector('#bidModal h2');
         submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Gửi Thầu';
         modalTitle.textContent = "Nộp thầu dự án";
+        // Remove withdraw button if exists (from previous edit mode)
+        const oldWithdraw = document.getElementById('withdrawBidBtn');
+        if (oldWithdraw && oldWithdraw.parentElement) {
+            oldWithdraw.parentElement.removeChild(oldWithdraw);
+        }
         
         document.getElementById('bidProjectId').value = projectId;
         if(document.getElementById('bidProjectDeadline')) 
@@ -413,22 +527,49 @@
 
         // CHECK XEM ĐÃ BID CHƯA
         try {
-            // Lấy current user ID
-            const userResp = await fetch(`${API_BASE}/api/v1/auth/me`, { headers: {'Authorization': `Bearer ${token}`} });
-            const user = await userResp.json();
-            
-            // Lấy danh sách bid của dự án
-            const bidsResp = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, { headers: {'Authorization': `Bearer ${token}`} });
-            const bids = await bidsResp.json();
-            
-            const myBid = bids.find(b => b.freelancer_id === user.id);
-            
-            if (myBid) {
+            // Lấy hồ sơ thầu của chính mình (server đảm bảo đúng tài khoản)
+            const myBidResp = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids/me`, { headers: {'Authorization': `Bearer ${token}`} });
+            if (myBidResp.ok) {
+                const myBid = await myBidResp.json();
                 // --> CHUYỂN SANG CHẾ ĐỘ EDIT
                 console.log("Found existing bid:", myBid);
                 state.currentBidId = myBid.id;
                 modalTitle.textContent = "Chỉnh sửa hồ sơ thầu";
                 submitBtn.innerHTML = '<i class="fas fa-save"></i> Cập nhật hồ sơ';
+                // Add withdraw button for freelancer
+                try {
+                    const bar = submitBtn.parentElement;
+                    if (bar && !document.getElementById('withdrawBidBtn')) {
+                        const w = document.createElement('button');
+                        w.id = 'withdrawBidBtn';
+                        w.type = 'button';
+                        w.className = 'btn btn-outline';
+                        w.innerHTML = '<i class=\"fas fa-times\"></i> Rút hồ sơ';
+                        w.onclick = async function () {
+                            if (!confirm('Bạn chắc chắn muốn rút hồ sơ thầu?')) return;
+                            const tk = localStorage.getItem('access_token');
+                            try {
+                                const delResp = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids/me`, {
+                                    method: 'DELETE',
+                                    headers: { 'Authorization': `Bearer ${tk}` }
+                                });
+                                if (delResp.status === 204) {
+                                    alert('Đã rút hồ sơ thầu.');
+                                    state.currentBidId = null;
+                                    closeBidModal();
+                                } else {
+                                    const errText = await delResp.text().catch(()=> '');
+                                    let msg = 'Không thể rút hồ sơ.';
+                                    try { const j = JSON.parse(errText); if (j.detail) msg = j.detail; } catch(_) { if (errText) msg = errText; }
+                                    alert(msg);
+                                }
+                            } catch (e) {
+                                alert('Lỗi kết nối. Không thể rút hồ sơ.');
+                            }
+                        };
+                        bar.appendChild(w);
+                    }
+                } catch (_) {}
                 
                 // Fill dữ liệu cũ
                 document.getElementById('bidPrice').value = myBid.price;
@@ -437,7 +578,10 @@
                 let milestonesData = null;
                 let cleanCoverLetter = myBid.cover_letter;
                 
-                if (myBid.cover_letter && myBid.cover_letter.includes("DATA_JSON:")) {
+                // Ưu tiên dùng cột milestones nếu có
+                if (Array.isArray(myBid.milestones) && myBid.milestones.length) {
+                    milestonesData = myBid.milestones;
+                } else if (myBid.cover_letter && myBid.cover_letter.includes("DATA_JSON:")) {
                     const parts = myBid.cover_letter.split("DATA_JSON:");
                     cleanCoverLetter = parts[0].trim();
                     try {
@@ -450,9 +594,82 @@
                 // Generate milestones với dữ liệu cũ
                 generateMilestones(milestonesData);
             } else {
-                // --> CHẾ ĐỘ TẠO MỚI
-                document.getElementById('bidForm').reset();
-                generateMilestones(); // Tạo mặc định
+                // Fallback: nếu 404 từ /bids/me, thử lấy danh sách bids và khớp theo user id
+                if (myBidResp.status === 404) {
+                    try {
+                        const meResp = await fetch(`${API_BASE}/api/v1/auth/me`, { headers: {'Authorization': `Bearer ${token}`} });
+                        const me = meResp.ok ? await meResp.json() : null;
+                        const listResp = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, { headers: {'Authorization': `Bearer ${token}`} });
+                        const list = listResp.ok ? await listResp.json() : [];
+                        const myBid = me ? list.find(function(b){ return b.freelancer_id === me.id; }) : null;
+                        if (myBid) {
+                            // --> CHUYỂN SANG CHẾ ĐỘ EDIT
+                            console.log("Found existing bid via fallback:", myBid);
+                            state.currentBidId = myBid.id;
+                            modalTitle.textContent = "Chỉnh sửa hồ sơ thầu";
+                            submitBtn.innerHTML = '<i class="fas fa-save"></i> Cập nhật hồ sơ';
+                            // Add withdraw button (fallback branch)
+                            try {
+                                const bar = submitBtn.parentElement;
+                                if (bar && !document.getElementById('withdrawBidBtn')) {
+                                    const w = document.createElement('button');
+                                    w.id = 'withdrawBidBtn';
+                                    w.type = 'button';
+                                    w.className = 'btn btn-outline';
+                                    w.innerHTML = '<i class=\"fas fa-times\"></i> Rút hồ sơ';
+                                    w.onclick = async function () {
+                                        if (!confirm('Bạn chắc chắn muốn rút hồ sơ thầu?')) return;
+                                        const tk = localStorage.getItem('access_token');
+                                        try {
+                                            const delResp = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids/me`, {
+                                                method: 'DELETE',
+                                                headers: { 'Authorization': `Bearer ${tk}` }
+                                            });
+                                            if (delResp.status === 204) {
+                                                alert('Đã rút hồ sơ thầu.');
+                                                state.currentBidId = null;
+                                                closeBidModal();
+                                            } else {
+                                                const errText = await delResp.text().catch(()=> '');
+                                                let msg = 'Không thể rút hồ sơ.';
+                                                try { const j = JSON.parse(errText); if (j.detail) msg = j.detail; } catch(_) { if (errText) msg = errText; }
+                                                alert(msg);
+                                            }
+                                        } catch (e) {
+                                            alert('Lỗi kết nối. Không thể rút hồ sơ.');
+                                        }
+                                    };
+                                    bar.appendChild(w);
+                                }
+                            } catch (_) {}
+                            
+                            document.getElementById('bidPrice').value = myBid.price;
+                            let milestonesData = null;
+                            let cleanCoverLetter = myBid.cover_letter;
+                            if (Array.isArray(myBid.milestones) && myBid.milestones.length) {
+                                milestonesData = myBid.milestones;
+                            } else if (myBid.cover_letter && myBid.cover_letter.includes("DATA_JSON:")) {
+                                const parts = myBid.cover_letter.split("DATA_JSON:");
+                                cleanCoverLetter = parts[0].trim();
+                                try { milestonesData = JSON.parse(parts[1].trim()); } catch(e) {}
+                            }
+                            document.getElementById('bidCoverLetter').value = cleanCoverLetter;
+                            generateMilestones(milestonesData);
+                        } else {
+                            // --> CHẾ ĐỘ TẠO MỚI
+                            document.getElementById('bidForm').reset();
+                            generateMilestones(); // Tạo mặc định
+                        }
+                    } catch (_e) {
+                        // --> CHẾ ĐỘ TẠO MỚI
+                        document.getElementById('bidForm').reset();
+                        generateMilestones(); // Tạo mặc định
+                    }
+                } else {
+                    // --> CHẾ ĐỘ TẠO MỚI
+                    document.getElementById('bidForm').reset();
+                    generateMilestones(); // Tạo mặc định
+                }
             }
         } catch (e) {
             console.error("Error checking existing bid", e);
@@ -510,7 +727,8 @@
         const bidData = {
             price: price,
             timeline_days: maxDays > 0 ? maxDays : 7,
-            cover_letter: fullCoverLetter
+            cover_letter: fullCoverLetter,
+            milestones: milestones
         };
 
         submitBtn.disabled = true;
@@ -522,7 +740,7 @@
 
             // Nếu đang Edit -> Đổi URL và Method
             if (state.currentBidId) {
-                url = `${API_BASE}/api/v1/projects/${projectId}/bids/${state.currentBidId}`;
+                url = `${API_BASE}/api/v1/projects/${projectId}/bids/me`;
                 method = 'PUT';
             }
 
@@ -537,7 +755,31 @@
                 closeBidModal();
                 // Reload lại list để cập nhật UI nếu cần
             } else {
-                throw new Error('Lỗi server');
+                // Nếu là 404 khi PUT /bids/me: chưa có hồ sơ thầu cho dự án này dưới tài khoản hiện tại
+                if (response.status === 404 && method === 'PUT') {
+                    state.currentBidId = null;
+                    const modalTitleNow = document.querySelector('#bidModal h2');
+                    const submitBtnNow = document.getElementById('submitBidBtn');
+                    if (modalTitleNow) modalTitleNow.textContent = "Nộp thầu dự án";
+                    if (submitBtnNow) submitBtnNow.innerHTML = '<i class="fas fa-paper-plane"></i> Gửi Thầu';
+                    const errTextLocal = await response.text().catch(()=>'');                    
+                    let errMsgLocal = 'Không tìm thấy hồ sơ thầu của bạn cho dự án này. Vui lòng gửi mới.';
+                    try {
+                        const errJson = JSON.parse(errTextLocal);
+                        if (errJson.detail) errMsgLocal = errJson.detail;
+                    } catch(_) {}
+                    throw new Error(errMsgLocal);
+                }
+
+                const errText = await response.text().catch(()=>'');
+                let errMsg = 'Lỗi server';
+                try {
+                    const errJson = JSON.parse(errText);
+                    errMsg = errJson.detail || errMsg;
+                } catch(_) {
+                    errMsg = errText || errMsg;
+                }
+                throw new Error(errMsg);
             }
         } catch (error) {
             alert('Có lỗi xảy ra: ' + error.message);

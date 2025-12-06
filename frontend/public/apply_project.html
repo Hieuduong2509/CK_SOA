@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ứng tuyển dự án</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="navbar-root"></div>
+
+  <main class="page-container">
+    <section class="section">
+      <div class="container">
+        <h1 id="formTitle" class="section-title">Nộp hồ sơ ứng tuyển</h1>
+        <p class="section-subtitle">Điền thông tin báo giá và lộ trình thực hiện.</p>
+
+        <form id="proposalForm" class="card" style="padding: 16px;">
+          <div class="form-group">
+            <label for="coverLetter">Thư giới thiệu</label>
+            <textarea id="coverLetter" rows="4" placeholder="Mô tả cách bạn sẽ thực hiện dự án..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="deliveryTime">Thời gian dự kiến (ngày)</label>
+            <input id="deliveryTime" type="number" min="1" placeholder="7">
+          </div>
+
+          <div class="card mb-4">
+            <div class="card-header">
+              <h5>Lộ trình thanh toán (Milestones)</h5>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table table-bordered">
+                  <thead class="table-light">
+                    <tr>
+                      <th style="width: 40%">Công việc / Giai đoạn</th>
+                      <th style="width: 25%">Số tiền (VNĐ)</th>
+                      <th style="width: 25%">Ngày hoàn thành</th>
+                      <th style="width: 10%">Xóa</th>
+                    </tr>
+                  </thead>
+                  <tbody id="milestoneBody">
+                    <tr>
+                      <td><input type="text" class="form-control m-title" placeholder="VD: Giai đoạn 1"></td>
+                      <td><input type="number" class="form-control m-amount" placeholder="0" onchange="updateTotal()"></td>
+                      <td><input type="date" class="form-control m-date"></td>
+                      <td><button type="button" class="btn btn-danger btn-sm" disabled>X</button></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mt-3">
+                <button type="button" class="btn btn-outline-primary" id="addMilestoneBtn">
+                  <i class="fas fa-plus"></i> Thêm giai đoạn
+                </button>
+                <div class="h5">Tổng cộng: <span id="totalBidDisplay" class="text-primary">0</span> VNĐ</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button id="submitBtn" type="submit" class="btn btn-primary">
+              <i class="fas fa-paper-plane"></i> Gửi hồ sơ
+            </button>
+            <a class="btn btn-secondary" href="dashboard_freelancer.html">Hủy</a>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/navbar.js"></script>
+  <script src="js/apply_project.js"></script>
+</body>
+</html>
+
+

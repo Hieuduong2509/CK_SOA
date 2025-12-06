@@ -115,6 +115,8 @@ class Bid(Base):
     price = Column(Float, nullable=False)
     timeline_days = Column(Integer, nullable=False)
     cover_letter = Column(Text, nullable=True)
+    # Milestones đề xuất kèm theo bid (proposal) - JSON array [{title, amount, deadline}, ...]
+    milestones = Column(JSON, default=list)
     status = Column(Enum(BidStatus), default=BidStatus.PENDING)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

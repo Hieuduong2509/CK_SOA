@@ -16,6 +16,7 @@ from typing import Optional
 from datetime import datetime
 
 _activity_metadata_ready = False
+_bid_milestones_ready = False
 
 
 def ensure_activity_metadata_column(engine):
@@ -32,6 +33,30 @@ def ensure_activity_metadata_column(engine):
     except Exception as exc:
         print(f"ensure_activity_metadata_column error: {exc}")
 
+
+def ensure_bid_milestones_column(engine):
+    """Đảm bảo bảng bids có cột milestones JSONB (tương thích Postgres/SQLite JSON)."""
+    global _bid_milestones_ready
+    if _bid_milestones_ready:
+        return
+    try:
+        inspector = inspect(engine)
+        columns = [col["name"] for col in inspector.get_columns("bids")]
+        if "milestones" not in columns:
+            # Postgres JSONB (hoặc JSON cho các dialect khác)
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE bids ADD COLUMN milestones JSONB DEFAULT '[]'::jsonb"))
+            except Exception:
+                # Fallback cho SQLite hoặc dialect khác
+                try:
+                    with engine.begin() as conn:
+                        conn.execute(text("ALTER TABLE bids ADD COLUMN milestones JSON DEFAULT '[]'"))
+                except Exception as exc2:
+                    print(f"ensure_bid_milestones_column (fallback) error: {exc2}")
+        _bid_milestones_ready = True
+    except Exception as exc:
+        print(f"ensure_bid_milestones_column error: {exc}")
 
 def _coerce_project_status(status_value):
     if status_value is None:
@@ -145,6 +170,12 @@ def get_projects_by_freelancer(db: Session, freelancer_id: int):
 
 
 def create_bid(db: Session, project_id: int, freelancer_id: int, **kwargs):
+    # Auto-migration: đảm bảo có cột milestones
+    try:
+        ensure_bid_milestones_column(db.bind)
+    except Exception:
+        pass
+
     bid = Bid(project_id=project_id, freelancer_id=freelancer_id, **kwargs)
     db.add(bid)
     db.commit()
