@@ -11,7 +11,7 @@
   }
 
   // DOM
-  var formEl, addBtn, titleEl, submitBtn, totalEl, tbodyEl;
+  var formEl, addBtn, titleEl, submitBtn, totalEl, tbodyEl, totalBidEl, countEl, projectNameEl, projectMetaEl;
 
   document.addEventListener('DOMContentLoaded', function () {
     formEl = document.getElementById('proposalForm');
@@ -20,20 +20,63 @@
     submitBtn = document.getElementById('submitBtn');
     totalEl = document.getElementById('totalBidDisplay');
     tbodyEl = document.getElementById('milestoneBody');
+    totalBidEl = document.getElementById('totalBid');
+    countEl = document.getElementById('milestoneCount');
+    projectNameEl = document.getElementById('projectName');
+    projectMetaEl = document.getElementById('projectMeta');
 
     if (addBtn) addBtn.addEventListener('click', function () { addMilestoneRow(); });
     if (formEl) formEl.addEventListener('submit', submitProposal);
+    if (countEl) countEl.addEventListener('change', generateMilestonesFromTotal);
+    if (totalBidEl) totalBidEl.addEventListener('input', generateMilestonesFromTotal);
 
     var mode = getParam('mode');
     var bidId = getParam('bid_id');
     var projectId = getParam('project_id');
 
+    // Load project summary
+    if (projectId) { loadProjectSummary(projectId); }
+
     if (mode === 'edit' && bidId && projectId) {
       titleEl.textContent = 'Cập nhật hồ sơ ứng tuyển';
-      submitBtn.innerHTML = '<i class="fas fa-save"></i> Lưu thay đổi';
+      var submitBtnText = document.getElementById('submitBtnText');
+      if (submitBtnText) submitBtnText.textContent = 'Lưu thay đổi';
+      submitBtn.innerHTML = '<i class="fas fa-save"></i> <span id="submitBtnText">Lưu thay đổi</span>';
       loadBidData(projectId, bidId);
+    } else {
+      // default 2 milestones
+      generateMilestonesFromTotal();
+    }
+
+    // Back button logic
+    var backBtn = document.getElementById('backBtn');
+    if (backBtn) {
+      backBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        var referrer = document.referrer;
+        if (referrer && referrer.includes('orders.html')) {
+          window.location.href = 'orders.html';
+        } else {
+          window.location.href = 'dashboard_freelancer.html';
+        }
+      });
     }
   });
+
+  async function loadProjectSummary(projectId){
+    try {
+      var token = localStorage.getItem('access_token');
+      var res = await fetch(API_BASE + '/api/v1/projects/' + projectId, { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+      if (!res.ok) return;
+      var p = await res.json();
+      if (projectNameEl) projectNameEl.textContent = p.title || ('Dự án #' + projectId);
+      if (projectMetaEl) {
+        var moTa = (p.description || '').slice(0, 120);
+        var dl = p.deadline ? new Date(p.deadline).toLocaleDateString('vi-VN') : '—';
+        projectMetaEl.textContent = (moTa ? moTa + ' • ' : '') + 'Deadline: ' + dl;
+      }
+    } catch(_) {}
+  }
 
   // Load old bid to edit
   async function loadBidData(projectId, bidId) {
@@ -47,6 +90,7 @@
       var myBid = bids.find(function (b) { return String(b.id) === String(bidId); });
       if (!myBid) return;
 
+      if (totalBidEl) totalBidEl.value = myBid.price || 0;
       document.getElementById('coverLetter').value = myBid.cover_letter || '';
       document.getElementById('deliveryTime').value = myBid.timeline_days || '';
 
@@ -56,10 +100,10 @@
         myBid.milestones.forEach(function (m) {
           addMilestoneRow(m.title, m.amount, m.deadline);
         });
+        updateTotal();
       } else {
-        addMilestoneRow('Hoàn thành dự án', myBid.price || 0, '');
+        generateMilestonesFromTotal();
       }
-      updateTotal();
     } catch (e) {
       console.error(e);
       alert('Không thể tải dữ liệu hồ sơ.');
@@ -72,12 +116,26 @@
     amount = amount || '';
     date = date || '';
     var row = document.createElement('tr');
+    var deleteDisabled = tbodyEl.querySelectorAll('tr').length <= 1 ? 'disabled' : '';
     row.innerHTML =
-      '<td><input type="text" class="form-control m-title" value="' + title + '" placeholder="Công việc..."></td>' +
-      '<td><input type="number" class="form-control m-amount" value="' + amount + '" placeholder="0" onchange="updateTotal()"></td>' +
+      '<td><input type="text" class="form-control m-title" value="' + (title || '').replace(/"/g, '&quot;') + '" placeholder="Công việc..."></td>' +
+      '<td><input type="number" class="form-control m-amount" value="' + (amount || '') + '" placeholder="0" onchange="updateTotal()"></td>' +
       '<td><input type="date" class="form-control m-date" value="' + (date ? String(date).split("T")[0] : '') + '"></td>' +
-      '<td><button type="button" class="btn btn-danger btn-sm" onclick="this.closest(\'tr\').remove(); updateTotal()">X</button></td>';
+      '<td><button type="button" class="btn btn-danger btn-sm" ' + deleteDisabled + ' onclick="this.closest(\'tr\').remove(); updateTotal(); updateDeleteButtons()" style="width: 100%;">X</button></td>';
     tbodyEl.appendChild(row);
+    updateDeleteButtons();
+  };
+
+  // Update delete buttons state
+  window.updateDeleteButtons = function updateDeleteButtons() {
+    var rows = tbodyEl.querySelectorAll('tr');
+    var canDelete = rows.length > 1;
+    rows.forEach(function(row) {
+      var btn = row.querySelector('button.btn-danger');
+      if (btn) {
+        btn.disabled = !canDelete;
+      }
+    });
   };
 
   // Total helper
@@ -87,8 +145,26 @@
     for (var i = 0; i < nodes.length; i++) {
       sum += parseFloat(nodes[i].value) || 0;
     }
-    totalEl.textContent = fmtCurrency(sum);
+    if (totalEl) totalEl.textContent = fmtCurrency(sum);
   };
+
+  function generateMilestonesFromTotal(){
+    var count = parseInt((countEl && countEl.value) || '2', 10);
+    if (count < 1) count = 1;
+    var total = parseFloat((totalBidEl && totalBidEl.value) || '0') || 0;
+    tbodyEl.innerHTML = '';
+    var base = Math.floor(total / count);
+    var remain = total - base * count;
+    var today = new Date();
+    for (var i=0;i<count;i++){
+      var amount = base + (i === count-1 ? remain : 0);
+      var date = new Date(today); date.setDate(today.getDate() + (7*(i+1)));
+      var dateStr = date.toISOString().split('T')[0];
+      addMilestoneRow('Giai đoạn ' + (i+1), amount, dateStr);
+    }
+    updateTotal();
+    updateDeleteButtons();
+  }
 
   // Submit
   async function submitProposal(ev) {
@@ -158,7 +234,8 @@
         throw new Error(err.detail || 'Không thể gửi hồ sơ');
       }
       alert(isEdit ? 'Cập nhật thành công!' : 'Nộp hồ sơ thành công!');
-      window.location.href = 'dashboard_freelancer.html';
+      // Redirect to orders page to see the updated proposal
+      window.location.href = 'orders.html';
     } catch (e) {
       alert('Lỗi: ' + e.message);
     } finally {

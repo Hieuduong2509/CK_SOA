@@ -732,13 +732,13 @@ var API_BASE = window.API_BASE || window.location.origin;
         const panelActive = document.getElementById('freelancerActiveList');
         const panelProposals = document.getElementById('freelancerProposalsList');
         // use subtab header (distinct class to avoid top-level tab listeners)
-        const header = freelSection ? freelSection.querySelector('.orders-subtab-header') : null;
+        const header = freelSection ? freelSection.querySelector('.freelancer-subtab-header') : null;
         if (header) {
             header.addEventListener('click', function(e){
-                const btn = e.target.closest('button.orders-subtab-btn[data-subtab]');
+                const btn = e.target.closest('button.freelancer-subtab-btn[data-subtab]');
                 if (!btn) return;
                 const which = btn.dataset.subtab;
-                header.querySelectorAll('button.orders-subtab-btn').forEach(b => b.classList.toggle('active', b === btn));
+                header.querySelectorAll('button.freelancer-subtab-btn').forEach(b => b.classList.toggle('active', b === btn));
                 if (which === 'freelancer-active') {
                     panelActive.style.display = '';
                     panelProposals.style.display = 'none';

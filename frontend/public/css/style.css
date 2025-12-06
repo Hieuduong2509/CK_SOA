@@ -2412,6 +2412,36 @@ section > .container {
     color: var(--primary-color);
 }
 
+.freelancer-subtab-header {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.freelancer-subtab-btn {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 0.6rem 1rem;
+    background: var(--bg-white);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+}
+
+.freelancer-subtab-btn:hover {
+    background: var(--bg-light);
+}
+
+.freelancer-subtab-btn.active {
+    background: rgba(82, 156, 255, 0.12);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
 .orders-tab-panel {
     display: none;
 }

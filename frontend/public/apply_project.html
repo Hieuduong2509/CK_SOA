@@ -6,6 +6,101 @@
   <title>Ứng tuyển dự án</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="css/style.css">
+  <style>
+    .apply-project-container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+    }
+    .project-summary-card {
+      background: #f9fafb;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .project-summary-card h3 {
+      margin: 0 0 0.5rem 0;
+      font-size: 1.25rem;
+      color: var(--text-primary);
+    }
+    .project-summary-card .project-meta {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+    .milestone-table-container {
+      background: #f8f9fa;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+      border: 1px solid #e9ecef;
+    }
+    .milestone-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .milestone-table thead {
+      background: #f8f9fa;
+    }
+    .milestone-table th {
+      padding: 0.75rem;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--text-primary);
+      border-bottom: 2px solid #e9ecef;
+    }
+    .milestone-table td {
+      padding: 0.75rem;
+      border-bottom: 1px solid #e9ecef;
+    }
+    .milestone-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+    .milestone-table input {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 0.95rem;
+    }
+    .milestone-table input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+    .milestone-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 2px solid #e9ecef;
+    }
+    .milestone-total-label {
+      font-weight: 600;
+      font-size: 1.1rem;
+      color: var(--text-primary);
+    }
+    .milestone-total-amount {
+      font-weight: 700;
+      font-size: 1.2rem;
+      color: var(--primary-color);
+    }
+    .form-actions {
+      display: flex;
+      gap: 1rem;
+      justify-content: flex-end;
+      margin-top: 2rem;
+    }
+    .btn-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+  </style>
 </head>
 <body>
   <div id="navbar-root"></div>
@@ -13,61 +108,88 @@
   <main class="page-container">
     <section class="section">
       <div class="container">
-        <h1 id="formTitle" class="section-title">Nộp hồ sơ ứng tuyển</h1>
-        <p class="section-subtitle">Điền thông tin báo giá và lộ trình thực hiện.</p>
-
-        <form id="proposalForm" class="card" style="padding: 16px;">
-          <div class="form-group">
-            <label for="coverLetter">Thư giới thiệu</label>
-            <textarea id="coverLetter" rows="4" placeholder="Mô tả cách bạn sẽ thực hiện dự án..."></textarea>
+        <div class="apply-project-container">
+          <div style="margin-bottom: 1.5rem;">
+            <a href="orders.html" class="btn btn-secondary btn-back" id="backBtn">
+              <i class="fas fa-arrow-left"></i> Quay về
+            </a>
           </div>
 
-          <div class="form-group">
-            <label for="deliveryTime">Thời gian dự kiến (ngày)</label>
-            <input id="deliveryTime" type="number" min="1" placeholder="7">
-          </div>
+          <h1 id="formTitle" class="section-title">Nộp hồ sơ ứng tuyển</h1>
+          <p class="section-subtitle">Điền thông tin báo giá và lộ trình thực hiện.</p>
 
-          <div class="card mb-4">
-            <div class="card-header">
-              <h5>Lộ trình thanh toán (Milestones)</h5>
+          <form id="proposalForm" class="card" style="padding: 2rem;">
+            <div class="project-summary-card">
+              <h3 id="projectName">Tên dự án</h3>
+              <div id="projectMeta" class="project-meta">—</div>
             </div>
-            <div class="card-body">
-              <div class="table-responsive">
-                <table class="table table-bordered">
-                  <thead class="table-light">
-                    <tr>
-                      <th style="width: 40%">Công việc / Giai đoạn</th>
-                      <th style="width: 25%">Số tiền (VNĐ)</th>
-                      <th style="width: 25%">Ngày hoàn thành</th>
-                      <th style="width: 10%">Xóa</th>
-                    </tr>
-                  </thead>
-                  <tbody id="milestoneBody">
-                    <tr>
-                      <td><input type="text" class="form-control m-title" placeholder="VD: Giai đoạn 1"></td>
-                      <td><input type="number" class="form-control m-amount" placeholder="0" onchange="updateTotal()"></td>
-                      <td><input type="date" class="form-control m-date"></td>
-                      <td><button type="button" class="btn btn-danger btn-sm" disabled>X</button></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div class="d-flex justify-content-between align-items-center mt-3">
-                <button type="button" class="btn btn-outline-primary" id="addMilestoneBtn">
-                  <i class="fas fa-plus"></i> Thêm giai đoạn
-                </button>
-                <div class="h5">Tổng cộng: <span id="totalBidDisplay" class="text-primary">0</span> VNĐ</div>
+
+            <div class="form-group">
+              <label for="totalBid">Tổng giá trị thầu (VND) *</label>
+              <input id="totalBid" type="number" min="0" step="1000" placeholder="Nhập tổng số tiền bạn muốn nhận" required>
+            </div>
+
+            <div class="form-group">
+              <label for="milestoneCount">Kế hoạch triển khai (Chia giai đoạn)</label>
+              <select id="milestoneCount" class="form-control">
+                <option value="1">1 Giai đoạn (Làm xong nhận hết)</option>
+                <option value="2" selected>2 Giai đoạn (50% - 50%)</option>
+                <option value="3">3 Giai đoạn (Chia đều)</option>
+                <option value="4">4 Giai đoạn</option>
+                <option value="5">5 Giai đoạn</option>
+              </select>
+              <small class="form-help">Hệ thống sẽ tự động chia nhỏ công việc và nhắc khách hàng nạp tiền trước mỗi giai đoạn.</small>
+            </div>
+
+            <div class="form-group">
+              <label for="coverLetter">Thư giới thiệu (Cover Letter) *</label>
+              <textarea id="coverLetter" rows="4" placeholder="Mô tả cách bạn sẽ thực hiện dự án..." required></textarea>
+              <small class="form-help">Hãy viết một thư ngỏ thuyết phục để tăng cơ hội được chọn</small>
+            </div>
+
+            <div class="form-group">
+              <label for="deliveryTime">Thời gian dự kiến (ngày) *</label>
+              <input id="deliveryTime" type="number" min="1" placeholder="7" required>
+            </div>
+
+            <div class="milestone-table-container">
+              <h5 style="margin: 0 0 1rem 0; font-size: 1rem; font-weight: 600;">Lộ trình thanh toán (Milestones)</h5>
+              <table class="milestone-table">
+                <thead>
+                  <tr>
+                    <th style="width: 40%">Công việc / Giai đoạn</th>
+                    <th style="width: 25%">Số tiền (VNĐ)</th>
+                    <th style="width: 25%">Ngày hoàn thành</th>
+                    <th style="width: 10%">Xóa</th>
+                  </tr>
+                </thead>
+                <tbody id="milestoneBody">
+                  <tr>
+                    <td><input type="text" class="form-control m-title" placeholder="VD: Giai đoạn 1"></td>
+                    <td><input type="number" class="form-control m-amount" placeholder="0" onchange="updateTotal()"></td>
+                    <td><input type="date" class="form-control m-date"></td>
+                    <td><button type="button" class="btn btn-danger btn-sm" disabled style="width: 100%;">X</button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="milestone-total">
+                <span class="milestone-total-label">Tổng cộng:</span>
+                <span class="milestone-total-amount"><span id="totalBidDisplay">0</span> VND</span>
               </div>
             </div>
-          </div>
 
-          <div class="form-actions">
-            <button id="submitBtn" type="submit" class="btn btn-primary">
-              <i class="fas fa-paper-plane"></i> Gửi hồ sơ
-            </button>
-            <a class="btn btn-secondary" href="dashboard_freelancer.html">Hủy</a>
-          </div>
-        </form>
+            <div id="errorMessage" class="error-message" style="display: none; color: var(--danger-color); margin-bottom: 1rem;"></div>
+
+            <div class="form-actions">
+              <a href="orders.html" class="btn btn-secondary">
+                <i class="fas fa-times"></i> Hủy
+              </a>
+              <button id="submitBtn" type="submit" class="btn btn-primary">
+                <i class="fas fa-paper-plane"></i> <span id="submitBtnText">Gửi hồ sơ</span>
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </section>
   </main>
