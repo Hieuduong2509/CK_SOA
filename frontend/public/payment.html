@@ -12,7 +12,93 @@
     <div id="navbar-root"></div>
 
     <main>
-        <div class="container" style="max-width: 900px; padding: 2rem 0;">
+        <!-- NEW PAYMENT UI FOR BID PAYMENT (project_id + bid_id) -->
+        <div id="bidPaymentContainer" style="display: none;">
+            <div class="container" style="max-width: 900px; padding: 2rem 0;">
+                <h1 style="text-align: center; margin-bottom: 2rem;">Xác nhận Thanh toán & Bắt đầu</h1>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                    <!-- PHẦN 1: Thông tin cá nhân / Đơn hàng -->
+                    <div class="card">
+                        <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Thông tin đơn hàng</h2>
+                        <div id="bidOrderSummary">
+                            <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md); margin-bottom: 1rem;">
+                                <p style="font-weight: 600; margin-bottom: 0.5rem;">Dự án</p>
+                                <p id="pj_title" style="color: var(--text-secondary);">Đang tải...</p>
+                            </div>
+                            <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md); margin-bottom: 1rem;">
+                                <p style="font-weight: 600; margin-bottom: 0.5rem;">Khách hàng</p>
+                                <p id="pj_client" style="color: var(--text-secondary);">Đang tải...</p>
+                            </div>
+                            <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md); margin-bottom: 1rem;">
+                                <p style="font-weight: 600; margin-bottom: 0.5rem;">Freelancer</p>
+                                <p id="pj_freelancer" style="color: var(--text-secondary);">Đang tải...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PHẦN 2: Thông tin chuyển khoản / Thanh toán -->
+                    <div class="card">
+                        <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Thông tin thanh toán</h2>
+                        <div id="bidPaymentDetails">
+                            <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md); margin-bottom: 1rem;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                                    <span style="font-weight: 600;">Thanh toán Đợt 1 (Đặt cọc)</span>
+                                </div>
+                                <div style="margin-bottom: 0.5rem;">
+                                    <small id="pj_milestone_name" style="color: var(--text-secondary);">Giai đoạn 1</small>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+                                    <span style="font-weight: 600; font-size: 1.1rem;">Số tiền đợt 1:</span>
+                                    <span id="pj_deposit_amount" style="color: var(--primary-color); font-weight: 700; font-size: 1.2rem;">0 đ</span>
+                                </div>
+                            </div>
+                            
+                            <div style="padding: 1rem; background: var(--bg-gray); border-radius: var(--radius-md); margin-bottom: 1rem;">
+                                <div style="display: flex; justify-content: space-between; padding-top: 0.75rem; border-top: 1px solid var(--border-color); font-weight: 600; font-size: 1.1rem;">
+                                    <span>Tổng giá trị hợp đồng:</span>
+                                    <span id="pj_total_price" style="color: var(--primary-color); font-weight: 700; font-size: 1.2rem;">0 đ</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label for="payment_method" style="font-weight: 600; margin-bottom: 0.5rem; display: block;">Phương thức thanh toán</label>
+                                <select id="payment_method" class="form-control" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="wallet">Số dư ví (Test Mode: Auto Success)</option>
+                                    <option value="vnpay">VNPAY QR</option>
+                                    <option value="momo">MOMO</option>
+                                </select>
+                            </div>
+
+                            <button id="btnConfirmPay" class="btn btn-success" style="width: 100%; padding: 1rem; font-size: 1.1rem; font-weight: 600;" onclick="processPayment()">
+                                <i class="fas fa-lock me-2"></i> THANH TOÁN & KÍCH HOẠT DỰ ÁN
+                            </button>
+                            <div class="text-center mt-3">
+                                <a href="javascript:history.back()" class="text-muted text-decoration-none">Quay lại</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PHẦN 3: Danh sách Milestones đề xuất -->
+                <div class="card" style="margin-top: 2rem;">
+                    <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Lộ trình thanh toán đề xuất</h2>
+                    <div id="milestonesList" style="margin-top: 1rem;">
+                        <p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Đang tải...</p>
+                    </div>
+                </div>
+
+                <div class="card" style="background: #FEF3C7; border: 1px solid #FCD34D; margin-top: 2rem;">
+                    <p style="margin: 0; color: #92400E;">
+                        <i class="fas fa-info-circle"></i> 
+                        <strong>Lưu ý:</strong> Thanh toán của bạn sẽ được giữ an toàn trong hệ thống và chỉ được chuyển cho freelancer sau khi dự án hoàn thành.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- LEGACY PAYMENT UI (for service payment and other flows) -->
+        <div id="legacyPaymentContainer" class="container" style="max-width: 900px; padding: 2rem 0;">
             <h1 style="text-align: center; margin-bottom: 2rem;">Thanh toán</h1>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
@@ -131,8 +217,29 @@
         const serviceId = urlParams.get('service_id');
         const projectId = urlParams.get('project_id'); // For bid payment
         const bidId = urlParams.get('bid_id'); // For bid payment
-        const freelancerId = urlParams.get('freelancer_id'); // Legacy support
-        const packageId = urlParams.get('package_id'); // Legacy support
+        
+        // Toggle UI based on payment type
+        if (projectId && bidId) {
+            // New bid payment UI
+            document.getElementById('bidPaymentContainer').style.display = 'block';
+            document.getElementById('legacyPaymentContainer').style.display = 'none';
+            // Load new payment.js
+            const script = document.createElement('script');
+            script.src = 'js/payment.js';
+            script.onload = function() {
+                // Gọi hàm loadPaymentInfo ngay sau khi script load xong
+                if (typeof loadPaymentInfo === 'function') {
+                    loadPaymentInfo();
+                }
+            };
+            document.body.appendChild(script);
+        } else {
+            // Legacy payment UI (service payment, etc.)
+            document.getElementById('bidPaymentContainer').style.display = 'none';
+            document.getElementById('legacyPaymentContainer').style.display = 'block';
+            
+            const freelancerId = urlParams.get('freelancer_id'); // Legacy support
+            const packageId = urlParams.get('package_id'); // Legacy support
 
         const paymentMethodSelect = document.getElementById('paymentMethod');
         const creditCardFields = document.getElementById('creditCardFields');
@@ -536,6 +643,7 @@
 
         // Load order summary on page load
         loadOrderSummary();
+        } // End of else block for legacy payment UI
     </script>
 </body>
 </html>

@@ -253,8 +253,8 @@ async function loadWorkspace(projectId){
       } else if (isProjectFreelancer) {
         if (typeof setupDeliveryControlsForFreelancer === 'function') setupDeliveryControlsForFreelancer();
       }
-      // Hide bidders tab for non-client users
-      if (!userIsClient) {
+      // Hide bidders tab for non-client users OR if bid already accepted
+      if (!userIsClient || (currentProject && currentProject.accepted_bid_id)) {
         const biddersBtn = document.querySelector('.tab-btn[data-tab="bidders"]');
         const biddersPane = document.getElementById('tab-bidders');
         if (biddersBtn) biddersBtn.style.display = 'none';
@@ -1773,10 +1773,10 @@ async function loadBidders(projectId) {
                     ${(() => {
                         const excerpt = coverLetterExcerpt(bid.cover_letter, 220);
                         return excerpt ? `
-                            <div style="background: white; padding: 1rem; border-radius: var(--radius-md); margin-top: 1rem; border-left: 3px solid var(--primary-color);">
+                        <div style="background: white; padding: 1rem; border-radius: var(--radius-md); margin-top: 1rem; border-left: 3px solid var(--primary-color);">
                                 <strong style="color: var(--text-primary); font-size: 0.875rem;">Thư chào (tóm tắt):</strong>
                                 <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); white-space: pre-wrap; font-size: 0.9375rem; line-height: 1.6;">${escapeHtml(excerpt)}</p>
-                            </div>
+                        </div>
                         ` : '';
                     })()}
                 </div>
@@ -2237,90 +2237,388 @@ window.sendMessage = sendMessage;
 
 // Load milestones
 async function loadMilestones(projectId) {
+    console.log(`[loadMilestones] Starting for project ${projectId}`);
+    
     const milestonesList = document.getElementById('milestonesList');
+    if (!milestonesList) {
+        console.error('[loadMilestones] milestonesList element not found!');
+        return;
+    }
+    
     milestonesList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Đang tải...</p>';
+
+    // Get debug panel elements first
+    const debugPanel = document.getElementById('milestonesDebugPanel');
+    const debugContent = document.getElementById('milestonesDebugContent');
+    
+    console.log(`[loadMilestones] Debug panel found:`, { debugPanel: !!debugPanel, debugContent: !!debugContent });
+    
+    // Helper function to update debug panel
+    const updateDebug = (text) => {
+        console.log(`[updateDebug] Updating debug panel:`, text.substring(0, 100));
+        if (debugPanel && debugContent) {
+            debugPanel.style.display = 'block';
+            const timestamp = new Date().toLocaleTimeString('vi-VN');
+            debugContent.textContent = `[${timestamp}] ${text}`;
+        } else {
+            console.warn('[updateDebug] Debug panel elements not found!', { debugPanel: !!debugPanel, debugContent: !!debugContent });
+        }
+    };
+    
+    // Check API_BASE
+    if (!API_BASE) {
+        const errorMsg = 'API_BASE is not defined! Check if config.js is loaded.';
+        console.error('[loadMilestones]', errorMsg);
+        updateDebug(`❌ ${errorMsg}\n\nAPI_BASE = ${API_BASE}\nwindow.API_BASE = ${window.API_BASE}\nwindow.location.origin = ${window.location.origin}`);
+        milestonesList.innerHTML = `<p style="text-align: center; color: var(--danger-color); padding: 2rem;">Lỗi: API_BASE không được định nghĩa!</p>`;
+        return;
+    }
 
     try {
         const token = localStorage.getItem('access_token');
-        const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/milestones`, {
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-        });
+        const apiUrl = `${API_BASE}/api/v1/projects/${projectId}/milestones`;
+        
+        console.log(`[loadMilestones] Making API call:`, { apiUrl, hasToken: !!token });
+        updateDebug(`📡 API Call:\nURL: ${apiUrl}\nMethod: GET\nAPI_BASE: ${API_BASE}\nHeaders: ${token ? 'Authorization: Bearer ***' : 'No token'}\n\n⏳ Đang gọi API...`);
+        
+        // Add timeout to prevent hanging
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            console.error('[loadMilestones] API call timeout after 10 seconds');
+            controller.abort();
+            updateDebug(`⏱️ API Call timeout sau 10 giây!\n\n❌ Có thể backend không phản hồi hoặc network bị lỗi.\n\n💡 Kiểm tra:\n1. Backend có đang chạy không?\n2. Network connection có ổn không?\n3. CORS có được cấu hình đúng không?`);
+            milestonesList.innerHTML = '<p style="text-align: center; color: var(--danger-color); padding: 2rem;">API call timeout! Xem debug panel để biết thêm chi tiết.</p>';
+        }, 10000);
+        
+        let response;
+        try {
+            console.log('[loadMilestones] Fetching...');
+            response = await fetch(apiUrl, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+                signal: controller.signal
+            });
+            console.log('[loadMilestones] Response received:', { status: response.status, statusText: response.statusText });
+        } catch (fetchError) {
+            clearTimeout(timeoutId);
+            console.error('[loadMilestones] Fetch error:', fetchError);
+            if (fetchError.name === 'AbortError') {
+                // Already handled by timeout
+                return;
+            }
+            updateDebug(`❌ Fetch Error:\n${fetchError.message}\n\nType: ${fetchError.name}\n\n💡 Có thể do:\n1. Network error\n2. CORS error\n3. Backend không chạy`);
+            milestonesList.innerHTML = `<p style="text-align: center; color: var(--danger-color); padding: 2rem;">Lỗi kết nối: ${fetchError.message}</p>`;
+            return;
+        }
+        
+        clearTimeout(timeoutId);
+        
+        // Update debug panel with response status (before parsing JSON)
+        updateDebug(`📡 API Response Received:\nStatus: ${response.status} ${response.statusText}\n\n⏳ Đang parse JSON...`);
         
         if (response.ok) {
-            const milestones = await response.json();
+            let milestones;
+            let responseText = '';
+            try {
+                responseText = await response.text();
+                console.log(`[loadMilestones] Raw response text:`, responseText.substring(0, 500));
+                milestones = JSON.parse(responseText);
+                console.log(`[loadMilestones] API Response parsed:`, milestones);
+            } catch (parseError) {
+                console.error('[loadMilestones] JSON Parse Error:', parseError);
+                updateDebug(`❌ JSON Parse Error:\n${parseError.message}\n\nResponse text (first 500 chars):\n${responseText.substring(0, 500)}\n\nFull response length: ${responseText.length}`);
+                milestonesList.innerHTML = '<p style="text-align: center; color: var(--danger-color); padding: 2rem;">Lỗi parse JSON từ server.</p>';
+                return;
+            }
+            
+            // Validate response
+            if (!Array.isArray(milestones)) {
+                console.error('[loadMilestones] Response is not an array:', milestones);
+                updateDebug(`❌ Invalid Response Format:\n\nResponse không phải là mảng (array).\n\nType: ${typeof milestones}\n\nValue: ${JSON.stringify(milestones, null, 2)}\n\nRaw response: ${responseText.substring(0, 500)}`);
+                milestonesList.innerHTML = '<p style="text-align: center; color: var(--danger-color); padding: 2rem;">Lỗi: Response không đúng định dạng.</p>';
+                return;
+            }
+            
+            // Update debug panel with raw data
+            try {
+                const debugInfo = `✅ API Response OK:\nStatus: ${response.status} OK\n\n📦 Raw JSON Data:\n${JSON.stringify(milestones, null, 2)}\n\n📊 Parsed Data:\n- Total milestones: ${milestones.length}\n- Milestones array: ${Array.isArray(milestones) ? 'YES ✓' : 'NO ✗'}\n\n${milestones.length > 0 ? milestones.map((m, i) => `Milestone ${i + 1}:\n  - id: ${m.id}\n  - title: ${m.title}\n  - amount: ${m.amount}\n  - status: ${m.status}\n  - description: ${m.description || 'N/A'}`).join('\n\n') : '⚠️ No milestones in array - Backend trả về mảng rỗng!'}`;
+                updateDebug(debugInfo);
+                console.log('[loadMilestones] Debug info updated');
+            } catch (e) {
+                console.error('[loadMilestones] Error formatting debug data:', e);
+                updateDebug(`📡 API Response:\nStatus: ${response.status} OK\n\n❌ Error formatting debug data: ${e.message}\n\nRaw data: ${JSON.stringify(milestones)}`);
+            }
+            
+            console.log(`[Workspace] Loaded ${milestones.length} milestones for project ${projectId}:`, milestones);
             
             if (milestones.length === 0) {
-                milestonesList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Chưa có milestone nào.</p>';
+                // Fetch project info để check accepted_bid_id
+                let projectInfo = null;
+                try {
+                    const projectRes = await fetch(`${API_BASE}/api/v1/projects/${projectId}`, {
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                    });
+                    if (projectRes.ok) {
+                        projectInfo = await projectRes.json();
+                    }
+                } catch (e) {
+                    console.warn('[loadMilestones] Could not fetch project info:', e);
+                }
+                
+                updateDebug(`⚠️ No Milestones Found:\n\nBackend trả về mảng rỗng (milestones.length = 0)\n\n💡 Có thể:\n1. Project chưa được accept bid\n2. Backend chưa tạo milestones từ bid\n3. Backend có lỗi khi parse milestones từ cover_letter\n\nProject ID: ${projectId}\nAccepted Bid ID: ${projectInfo?.accepted_bid_id || 'N/A'}\nProject Status: ${projectInfo?.status || 'N/A'}\n\n🔧 Backend sẽ tự động tạo milestones khi bạn refresh lại trang (nếu project đã accept bid).`);
+                milestonesList.innerHTML = '<p class="text-center text-muted py-3">Chưa có giai đoạn nào.<br><small>Nếu project đã được duyệt, vui lòng refresh lại trang.</small></p>';
+                console.warn(`[Workspace] No milestones found for project ${projectId}. Project may not have accepted bid yet.`);
                 return;
             }
 
-            const user = currentUser || getCurrentUserProfile();
-            let normalizedRole = '';
-            if (user && user.role) {
-                if (typeof user.role === 'string') {
-                    normalizedRole = user.role;
-                } else {
-                    normalizedRole = user.role.value || user.role.name || '';
-                }
+            // Lấy thông tin project để tính tổng giá trị
+            let project = null;
+            try {
+                project = currentProject || await getProject(projectId);
+            } catch (e) {
+                console.warn('[loadMilestones] Could not fetch project:', e);
+                project = currentProject; // Fallback to cached project
             }
-            normalizedRole = normalizedRole.toLowerCase();
-            const isClient = normalizedRole === 'client';
-            const isFreelancer = normalizedRole === 'freelancer';
+            
+            let totalProjectValue = 0;
+            
+            // Tính tổng từ các milestone
+            if (milestones.length > 0) {
+                totalProjectValue = milestones.reduce((sum, m) => sum + (m.amount || 0), 0);
+            }
 
-            milestonesList.innerHTML = milestones.map(m => {
+            // 1. Sắp xếp theo ID để đảm bảo thứ tự
+            milestones.sort((a, b) => a.id - b.id);
+
+            // 2. Lấy thông tin user và project
+            const user = currentUser || (typeof getCurrentUserProfile === 'function' && getCurrentUserProfile());
+            const isClientUser = project ? isClient(user, project) : false;
+            const isFreelancerUser = isFreelancer(user);
+            
+            console.log('[loadMilestones] User info:', { 
+                userId: user?.id, 
+                isClient: isClientUser, 
+                isFreelancer: isFreelancerUser,
+                projectId: project?.id 
+            });
+
+            // 3. Parse deadline từ description (format: "Tạo tự động từ hồ sơ thầu. Hạn: YYYY-MM-DD")
+            function parseDeadlineFromDescription(description) {
+                if (!description) return null;
+                const match = description.match(/Hạn:\s*(\d{4}-\d{2}-\d{2})/);
+                if (match) {
+                    try {
+                        return new Date(match[1]);
+                    } catch (e) {
+                        return null;
+                    }
+                }
+                return null;
+            }
+
+            // 4. Logic tuần tự (Sequential) - Mốc trước phải xong mới mở khóa mốc sau
+            let isPreviousDone = true; // Mốc đầu tiên luôn được phép kích hoạt
+
+            console.log('[loadMilestones] Rendering milestones:', milestones.length, milestones);
+            
+            try {
+                const renderedHTML = milestones.map((m, index) => {
                 const status = (m.status || '').toLowerCase();
-                const statusLabels = {
-                    'pending': { label: 'Chờ thực hiện', class: 'status-pending', color: '#6B7280' },
-                    'submitted': { label: 'Đã nộp', class: 'status-submitted', color: '#F59E0B' },
-                    'approved': { label: 'Đã duyệt', class: 'status-approved', color: '#10B981' },
-                    'rejected': { label: 'Từ chối', class: 'status-rejected', color: '#EF4444' },
-                    'paid': { label: 'Đã thanh toán', class: 'status-paid', color: '#10B981' }
-                };
-                const statusInfo = statusLabels[status] || { label: status, class: 'status-default', color: '#6B7280' };
+                
+                // Determine Logic Trạng Thái
+                const isFunded = ['in_progress', 'submitted', 'approved', 'paid'].includes(status);
+                let buttonHtml = '';
+                let statusBadge = '';
+                
+                // Parse deadline
+                const deadlineDate = parseDeadlineFromDescription(m.description);
+                let deadlineStr = 'Theo thỏa thuận';
+                if (deadlineDate) {
+                    try {
+                        deadlineStr = formatDate(deadlineDate.toISOString());
+                    } catch (e) {
+                        deadlineStr = deadlineDate.toLocaleDateString('vi-VN');
+                    }
+                }
+                
+                // --- XỬ LÝ NÚT BẤM ---
+                // Mốc đầu tiên (index === 0) luôn hiển thị "Đã thanh toán" (xám) vì đã thanh toán ở payment page
+                if (index === 0) {
+                    statusBadge = `<span class="badge bg-success">Đã thanh toán</span>`;
+                    buttonHtml = `<button class="btn btn-secondary btn-sm w-100 mt-2" disabled style="opacity: 0.6">
+                        <i class="fas fa-check-circle"></i> Đã thanh toán
+                    </button>`;
+                    isPreviousDone = true; // Mốc đầu đã thanh toán, mở khóa mốc sau
+                } else if (isFunded) {
+                    // TRƯỜNG HỢP 1: ĐÃ THANH TOÁN (Màu Xám/Xanh)
+                    if (status === 'submitted') {
+                        statusBadge = `<span class="badge bg-warning text-dark">Chờ duyệt</span>`;
+                        if (isClientUser) {
+                            // Client có nút duyệt nghiệm thu
+                            buttonHtml = `
+                                <button class="btn btn-success btn-sm w-100 mt-2" onclick="approveMilestone(${projectId}, ${m.id})">
+                                    <i class="fas fa-check-circle"></i> Duyệt & Giải ngân
+                                </button>`;
+                        } else {
+                            buttonHtml = `<button class="btn btn-secondary btn-sm w-100 mt-2" disabled>Đã nộp bài, chờ duyệt</button>`;
+                        }
+                    } else if (status === 'approved' || status === 'paid') {
+                        statusBadge = `<span class="badge bg-primary">Hoàn thành</span>`;
+                        buttonHtml = `<button class="btn btn-secondary btn-sm w-100 mt-2" disabled>Đã hoàn tất</button>`;
+                    } else {
+                        // In Progress
+                        statusBadge = `<span class="badge bg-success">Đang thực hiện / Đã cọc</span>`;
+                        if (isFreelancerUser) {
+                            buttonHtml = `
+                                <button class="btn btn-primary btn-sm w-100 mt-2" onclick="submitMilestone(${projectId}, ${m.id})">
+                                    <i class="fas fa-upload"></i> Nộp sản phẩm
+                                </button>`;
+                        } else {
+                            buttonHtml = `<button class="btn btn-secondary btn-sm w-100 mt-2" disabled>Đã thanh toán (Chờ Freelancer làm)</button>`;
+                        }
+                    }
+                    
+                    // Mốc này đã được cọc tiền, cho phép mốc sau chạy (linh động: đã cọc là mở khóa)
+                    isPreviousDone = true;
+                    
+                } else {
+                    // TRƯỜNG HỢP 2: CHƯA THANH TOÁN (Pending)
+                    if (isPreviousDone) {
+                        // Kiểm tra deadline để quyết định màu nút
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const deadline = deadlineDate ? new Date(deadlineDate) : null;
+                        if (deadline) deadline.setHours(0, 0, 0, 0);
+                        
+                        const isDeadlineReached = deadline && deadline <= today;
+                        
+                        if (isDeadlineReached) {
+                            // TỚI HẠN (Màu Xanh - Được phép thanh toán)
+                            statusBadge = `<span class="badge bg-info text-dark">Chờ thanh toán</span>`;
+                            if (isClientUser) {
+                                buttonHtml = `
+                                    <button class="btn btn-success btn-sm w-100 mt-2" onclick="processDeposit(${projectId}, ${m.id}, ${m.amount})">
+                                        <i class="fas fa-dollar-sign"></i> Thanh toán ${formatCurrency(m.amount)}
+                                    </button>`;
+                            } else {
+                                buttonHtml = `<button class="btn btn-outline-secondary btn-sm w-100 mt-2" disabled>Chờ Client thanh toán</button>`;
+                            }
+                        } else {
+                            // CHƯA TỚI HẠN (Màu Vàng - Chưa được thanh toán)
+                            statusBadge = `<span class="badge bg-warning text-dark">Chưa tới hạn</span>`;
+                            if (isClientUser) {
+                                buttonHtml = `
+                                    <button class="btn btn-warning btn-sm w-100 mt-2 text-white" disabled style="opacity: 0.8">
+                                        <i class="fas fa-clock"></i> Thanh toán ${formatCurrency(m.amount)} (Chưa tới hạn)
+                                    </button>`;
+                            } else {
+                                buttonHtml = `<button class="btn btn-outline-secondary btn-sm w-100 mt-2" disabled>Chờ Client thanh toán</button>`;
+                            }
+                        }
+                        // Block các mốc sau lại cho đến khi mốc này được nạp tiền
+                        isPreviousDone = false;
+                    } else {
+                        // CHƯA TỚI HẠN (Màu Vàng - Khóa vì mốc trước chưa xong)
+                        statusBadge = `<span class="badge bg-secondary">Chưa kích hoạt</span>`;
+                        buttonHtml = `
+                            <button class="btn btn-warning btn-sm w-100 mt-2 text-white" disabled style="opacity: 0.6">
+                                <i class="fas fa-lock"></i> Chưa tới hạn
+                            </button>`;
+                    }
+                }
 
+                // Render giao diện thẻ
                 return `
-                    <div style="background: var(--bg-gray); padding: 1.5rem; border-radius: var(--radius-lg); margin-bottom: 1rem; border-left: 4px solid ${statusInfo.color};">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
-                            <div style="flex: 1;">
-                                <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">${m.title}</h4>
-                                ${m.description ? `<p style="margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.9375rem;">${m.description}</p>` : ''}
-                                <p style="margin: 0; color: var(--primary-color); font-weight: 600; font-size: 1.125rem;">${formatCurrency(m.amount)}</p>
+                    <div class="card mb-3 shadow-sm border-0">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="fw-bold text-primary mb-0">Giai đoạn ${index + 1}: ${m.title}</h6>
+                                ${statusBadge}
                             </div>
-                            <span style="padding: 0.375rem 0.75rem; background: ${statusInfo.color}15; color: ${statusInfo.color}; border-radius: var(--radius-md); font-size: 0.875rem; font-weight: 500; white-space: nowrap;">
-                                ${statusInfo.label}
-                            </span>
+                            
+                            <div class="small text-muted mb-2">
+                                ${m.description && !m.description.includes('Hạn:') ? m.description : 'Không có mô tả'}
                         </div>
-                        ${m.submitted_at ? `
-                            <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem; color: var(--text-secondary);">
-                                <i class="fas fa-clock"></i> Nộp: ${formatDate(m.submitted_at)}
-                            </p>
-                        ` : ''}
-                        ${m.approved_at ? `
-                            <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem; color: var(--text-secondary);">
-                                <i class="fas fa-check-circle"></i> Duyệt: ${formatDate(m.approved_at)}
-                            </p>
-                        ` : ''}
-                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
-                            ${isClient && status === 'submitted' ? `
-                                <button class="btn btn-success btn-small" onclick="approveMilestone(${projectId}, ${m.id})" style="white-space: nowrap;">
-                                    <i class="fas fa-check"></i> Duyệt & Thanh toán
-                                </button>
-                            ` : ''}
-                            ${isFreelancer && status === 'pending' ? `
-                                <button class="btn btn-primary btn-small" onclick="submitMilestone(${projectId}, ${m.id})" style="white-space: nowrap;">
-                                    <i class="fas fa-upload"></i> Nộp bài
-                                </button>
-                            ` : ''}
+                            <div class="d-flex justify-content-between font-monospace small bg-light p-2 rounded">
+                                <span>Giá trị: <strong>${formatCurrency(m.amount)}</strong></span>
+                                <span class="text-danger">Hạn: ${deadlineStr}</span>
+                            </div>
+                            <div class="mt-2">
+                                ${buttonHtml}
+                            </div>
                         </div>
                     </div>
                 `;
-            }).join('');
+                }).join('');
+                
+                milestonesList.innerHTML = renderedHTML;
+                console.log('[loadMilestones] Milestones rendered successfully, HTML length:', renderedHTML.length);
+            } catch (renderError) {
+                console.error('[loadMilestones] Error rendering milestones:', renderError);
+                updateDebug(`❌ Render Error:\n${renderError.message}\n\nStack:\n${renderError.stack}`);
+                milestonesList.innerHTML = `<p class="text-danger text-center">Lỗi hiển thị milestones: ${renderError.message}</p>`;
+            }
         } else {
-            throw new Error('Failed to load milestones');
+            // Response không OK (4xx, 5xx, etc.)
+            let errorText = '';
+            try {
+                errorText = await response.text();
+            } catch (e) {
+                errorText = 'Could not read error response';
+            }
+            
+            updateDebug(`❌ API Error Response:\nStatus: ${response.status} ${response.statusText}\n\nError Response Body:\n${errorText}\n\n⚠️ Backend không trả về milestones hoặc có lỗi xảy ra.\n\n💡 Kiểm tra:\n1. Backend có đang chạy không?\n2. Project ${projectId} có accepted_bid_id không?\n3. Backend có parse được milestones từ cover_letter không?\n4. Kiểm tra backend console logs để xem [DEBUG] messages`);
+            
+            console.error(`[Workspace] API Error: ${response.status} ${response.statusText}`, errorText);
+            milestonesList.innerHTML = `<p style="text-align: center; color: var(--danger-color); padding: 2rem;">Lỗi API: ${response.status} ${response.statusText}<br><small>Xem debug panel để biết thêm chi tiết</small></p>`;
+            return;
         }
     } catch (error) {
         console.error('Error loading milestones:', error);
-        milestonesList.innerHTML = '<p style="text-align: center; color: var(--danger-color); padding: 2rem;">Có lỗi xảy ra khi tải milestones.</p>';
+        
+        // Check if it's an abort error (timeout)
+        if (error.name === 'AbortError') {
+            updateDebug(`⏱️ Request Timeout:\nAPI call bị hủy sau 10 giây.\n\n💡 Có thể:\n1. Backend không phản hồi\n2. Network bị chậm\n3. Backend đang xử lý quá lâu`);
+        } else {
+            updateDebug(`❌ Exception Caught:\nError: ${error.message}\n\nType: ${error.name || 'Unknown'}\n\nStack trace:\n${error.stack || 'N/A'}\n\n⚠️ Có lỗi xảy ra khi gọi API hoặc parse response.\n\n💡 Có thể do:\n1. Network error (CORS, connection refused)\n2. JSON parse error\n3. JavaScript runtime error\n4. Backend không chạy`);
+        }
+        
+        milestonesList.innerHTML = `<p style="text-align: center; color: var(--danger-color); padding: 2rem;">Có lỗi xảy ra khi tải milestones.<br><small>${error.message}</small><br><small>Xem debug panel để biết thêm chi tiết</small></p>`;
+    }
+}
+
+// Hàm bổ trợ: Client nạp tiền cho các mốc sau (Mốc 2, 3...)
+async function processDeposit(projectId, milestoneId, amount) {
+    if (!confirm(`Xác nhận thanh toán ${formatCurrency(amount)} để kích hoạt giai đoạn này?`)) return;
+    
+    try {
+        const token = localStorage.getItem('access_token');
+        
+        // Gọi API tạo deposit (giống lúc accept bid nhưng chỉ cho milestone cụ thể)
+        const response = await fetch(`${API_BASE}/api/v1/payments/escrow/deposit`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                project_id: parseInt(projectId),
+                milestone_id: parseInt(milestoneId),
+                amount: parseFloat(amount)
+                // client_id, freelancer_id backend tự lấy từ project hoặc token
+            })
+        });
+        
+        if (response.ok) {
+            alert("Thanh toán thành công! Giai đoạn đã được kích hoạt.");
+            // Reload lại để cập nhật trạng thái nút
+            loadMilestones(projectId);
+        } else {
+            const err = await response.json().catch(() => ({ detail: 'Unknown error' }));
+            alert("Lỗi: " + (err.detail || "Không thể thanh toán."));
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Lỗi kết nối.");
     }
 }
 
@@ -2358,37 +2656,133 @@ async function approveMilestone(projectId, milestoneId) {
 window.approveMilestone = approveMilestone;
 
 // Submit milestone (Freelancer)
-async function submitMilestone(projectId, milestoneId) {
-    const description = prompt('Nhập mô tả công việc đã hoàn thành:');
-    if (!description) return;
+function submitMilestone(projectId, milestoneId) {
+    // Reset form
+    document.getElementById('submit_milestone_id').value = milestoneId;
+    document.getElementById('submit_description').value = '';
+    document.getElementById('submit_files').value = '';
+    
+    // Mở Modal
+    const modal = document.getElementById('submitWorkModal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
 
+function closeSubmitWorkModal() {
+    const modal = document.getElementById('submitWorkModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function confirmSubmitWork() {
+    const milestoneId = document.getElementById('submit_milestone_id').value;
+    const description = document.getElementById('submit_description').value;
+    const fileInput = document.getElementById('submit_files');
+    const files = fileInput.files;
+    const projectId = currentProjectId;
     const token = localStorage.getItem('access_token');
-    if (!token) return;
+
+    if (!milestoneId || !projectId) {
+        alert('Thiếu thông tin milestone hoặc project.');
+        return;
+    }
+
+    if (!description && files.length === 0) {
+        alert("Vui lòng nhập lời nhắn hoặc đính kèm file sản phẩm.");
+        return;
+    }
+
+    if (!token) {
+        alert('Vui lòng đăng nhập lại.');
+        window.location.href = 'login.html';
+        return;
+    }
+
+    // Disable nút để tránh click nhiều lần
+    const btnSubmit = document.querySelector('#submitWorkModal .btn-primary');
+    const originalText = btnSubmit.innerHTML;
+    btnSubmit.disabled = true;
+    btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang tải lên...';
 
     try {
-        const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/milestones/${milestoneId}/submit`, {
+        let uploadedFileUrls = [];
+
+        // BƯỚC 1: Upload file nếu có
+        if (files.length > 0) {
+            // Upload từng file một
+            for (let i = 0; i < files.length; i++) {
+                const singleFormData = new FormData();
+                singleFormData.append('file', files[i]);
+                
+                const uploadRes = await fetch(`${API_BASE}/api/v1/projects/${projectId}/attachments`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: singleFormData
+                });
+                
+                if (uploadRes.ok) {
+                    const data = await uploadRes.json();
+                    // API trả về: { "attachment": { "url": "...", ... } } hoặc { "url": "..." }
+                    if (data.attachment && data.attachment.url) {
+                        uploadedFileUrls.push(data.attachment.url);
+                    } else if (data.url) {
+                        uploadedFileUrls.push(data.url);
+                    }
+                } else {
+                    const err = await uploadRes.json().catch(() => ({}));
+                    console.warn(`Failed to upload file ${files[i].name}:`, err);
+                }
+            }
+        }
+
+        // BƯỚC 2: Gọi API Submit Milestone
+        const payload = {
+            description: description || 'Đã hoàn thành milestone',
+            file_urls: uploadedFileUrls
+        };
+
+        const submitRes = await fetch(`${API_BASE}/api/v1/projects/${projectId}/milestones/${milestoneId}/submit`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ description })
+            body: JSON.stringify(payload)
         });
 
-        if (response.ok) {
-            alert('Đã nộp milestone thành công!');
+        if (submitRes.ok) {
+            alert("Nộp sản phẩm thành công! Client đã nhận được thông báo.");
+            // Đóng modal
+            closeSubmitWorkModal();
+            
+            // Reload lại danh sách mốc để cập nhật trạng thái
+            if (typeof loadMilestones === 'function') {
             loadMilestones(projectId);
+            }
+            
+            // Reload lại tab files để thấy file vừa up
+            if (typeof loadProjectFiles === 'function') {
+                loadProjectFiles(projectId);
+            }
         } else {
-            const error = await response.json();
-            alert(error.detail || 'Không thể nộp milestone.');
+            const err = await submitRes.json().catch(() => ({}));
+            alert("Lỗi nộp bài: " + (err.detail || "Không xác định"));
         }
+
     } catch (error) {
-        console.error('Error submitting milestone:', error);
-        alert('Có lỗi xảy ra khi nộp milestone.');
+        console.error('Error submitting work:', error);
+        alert("Lỗi kết nối: " + (error.message || "Vui lòng thử lại."));
+    } finally {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = originalText;
     }
 }
 // Expose immediately
 window.submitMilestone = submitMilestone;
+window.closeSubmitWorkModal = closeSubmitWorkModal;
+window.confirmSubmitWork = confirmSubmitWork;
 
 // Load project files/attachments
 async function loadProjectFiles(projectId) {
@@ -2417,7 +2811,15 @@ async function loadProjectFiles(projectId) {
         const attachments = normalizeAttachmentsList(project.attachments || []);
         
         const user = currentUser || getCurrentUserProfile();
+        // Owner = client (chủ dự án)
         const isOwner = user && project.client_id === user.id;
+        // Assigned Freelancer = freelancer được assign vào project
+        const isAssignedFreelancer = user && (
+            project.freelancer_id === user.id ||
+            (project.accepted_bid_id && currentFreelancerId === user.id)
+        );
+        // Can manage files = cả client và freelancer đều có quyền upload/xóa
+        const canManageFiles = isOwner || isAssignedFreelancer;
 
         updateWorkspaceShowcase(projectId, attachments, isOwner);
 
@@ -2425,13 +2827,13 @@ async function loadProjectFiles(projectId) {
             filesList.innerHTML = `
                 <div class="workspace-empty-attachments">
                     <p>Chưa có tệp đính kèm.</p>
-                    ${isOwner ? renderAttachmentUploadControls(projectId) : ''}
+                    ${canManageFiles ? renderAttachmentUploadControls(projectId) : ''}
                 </div>
             `;
             return;
         }
 
-        const uploadControlsHtml = isOwner ? renderAttachmentUploadControls(projectId) : '';
+        const uploadControlsHtml = canManageFiles ? renderAttachmentUploadControls(projectId) : '';
 
         const fileItemsHtml = attachments.map((attachment, index) => {
             const fileSize = attachment.size ? formatFileSize(attachment.size) : '';
@@ -2456,7 +2858,7 @@ async function loadProjectFiles(projectId) {
                         <button onclick="downloadProjectFile(${projectId}, ${index}, event)" class="btn btn-secondary btn-small" title="Tải xuống">
                             <i class="fas fa-download"></i>
                         </button>
-                        ${isOwner ? `
+                        ${canManageFiles ? `
                             <button class="btn btn-danger btn-small" onclick="deleteProjectFile(${projectId}, ${index}, '${(attachment.filename || '').replace(/'/g, "\\'")}')" title="Xóa">
                                 <i class="fas fa-trash"></i>
                             </button>
@@ -2974,6 +3376,15 @@ async function loadBidders(projectId) {
             return;
         }
 
+        // Fetch project to check status FIRST (before fetching bids to save API call)
+        const project = currentProject || await getProject(projectId);
+        
+        // QUAN TRỌNG: Nếu đã duyệt bid (có accepted_bid_id), không hiển thị danh sách ứng viên nữa
+        if (project && project.accepted_bid_id) {
+            biddersList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Đã chọn freelancer cho dự án này.</p>';
+            return;
+        }
+
         // Fetch bids
         const bidsResponse = await fetch(`${API_BASE}/api/v1/projects/${projectId}/bids`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -2984,9 +3395,6 @@ async function loadBidders(projectId) {
         }
 
         const bids = await bidsResponse.json();
-
-        // Fetch project to check status
-        const project = currentProject || await getProject(projectId);
 
         // If project has accepted bid, determine freelancer id
         if (!currentFreelancerId && project && project.accepted_bid_id) {
@@ -3034,22 +3442,28 @@ async function loadBidders(projectId) {
                         <thead class="border-bottom">
                             <tr>
                                 <th style="text-align:left;">Giai đoạn</th>
+                                <th style="text-align:right;">Tỉ lệ (%)</th>
                                 <th style="text-align:right;">Chi phí</th>
                                 <th style="text-align:right;">Hạn chót</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${ms.map(m => `
+                            ${ms.map(m => {
+                                const percent = m.percent || (bid.price > 0 ? ((m.amount || 0) / bid.price * 100) : 0);
+                                return `
                                 <tr>
                                     <td>${escapeHtml(m.title || '')}</td>
+                                    <td style="text-align:right; color:#6b7280; font-weight:500;">${parseFloat(percent).toFixed(1)}%</td>
                                     <td style="text-align:right; font-weight:600; color:#16a34a;">${formatCurrency(m.amount || 0)}</td>
                                     <td style="text-align:right; color:#6b7280;">${m.deadline ? new Date(m.deadline).toLocaleDateString('vi-VN') : ''}</td>
                                 </tr>
-                            `).join('')}
+                            `;
+                            }).join('')}
                         </tbody>
                         <tfoot class="border-top">
                             <tr>
                                 <td style="font-weight:600;">TỔNG CỘNG</td>
+                                <td style="text-align:right; font-weight:600; color:#10b981;">100%</td>
                                 <td style="text-align:right; color:#1d4ed8; font-weight:700;">${formatCurrency(bid.price || 0)}</td>
                                 <td></td>
                             </tr>
@@ -3094,10 +3508,10 @@ async function loadBidders(projectId) {
                     ${(() => {
                         const excerpt = coverLetterExcerpt(bid.cover_letter, 220);
                         return excerpt ? `
-                            <div style="background: white; padding: 1rem; border-radius: var(--radius-md); margin-top: 1rem; border-left: 3px solid var(--primary-color);">
+                        <div style="background: white; padding: 1rem; border-radius: var(--radius-md); margin-top: 1rem; border-left: 3px solid var(--primary-color);">
                                 <strong style="color: var(--text-primary); font-size: 0.875rem;">Thư chào (tóm tắt):</strong>
                                 <p style="margin: 0.5rem 0 0 0; color: var(--text-secondary); white-space: pre-wrap; font-size: 0.9375rem; line-height: 1.6;">${escapeHtml(excerpt)}</p>
-                            </div>
+                        </div>
                         ` : '';
                     })()}
                 </div>
@@ -3203,22 +3617,28 @@ async function openBidDetailModal(projectId, bidId){
               <thead class="border-bottom">
                 <tr>
                   <th style="text-align:left;">Giai đoạn</th>
+                  <th style="text-align:right;">Tỉ lệ (%)</th>
                   <th style="text-align:right;">Chi phí</th>
                   <th style="text-align:right;">Hạn chót</th>
                 </tr>
               </thead>
               <tbody>
-                ${ms.map(m => `
+                ${ms.map(m => {
+                  const percent = m.percent || (bid.price > 0 ? ((m.amount || 0) / bid.price * 100) : 0);
+                  return `
                   <tr>
                     <td>${escapeHtml(m.title || '')}</td>
+                    <td style="text-align:right; color:#6b7280; font-weight:500;">${parseFloat(percent).toFixed(1)}%</td>
                     <td style="text-align:right; font-weight:600; color:#16a34a;">${formatCurrency(m.amount || 0)}</td>
                     <td style="text-align:right; color:#6b7280;">${m.deadline ? new Date(m.deadline).toLocaleDateString('vi-VN') : ''}</td>
                   </tr>
-                `).join('')}
+                `;
+                }).join('')}
               </tbody>
               <tfoot class="border-top">
                 <tr>
                   <td style="font-weight:600;">TỔNG CỘNG</td>
+                  <td style="text-align:right; font-weight:600; color:#10b981;">100%</td>
                   <td style="text-align:right; color:#1d4ed8; font-weight:700;">${formatCurrency(bid.price || 0)}</td>
                   <td></td>
                 </tr>

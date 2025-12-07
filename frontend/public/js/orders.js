@@ -953,22 +953,28 @@ var API_BASE = window.API_BASE || window.location.origin;
                     <thead class="border-bottom">
                         <tr>
                             <th style="text-align:left;">Giai đoạn</th>
+                            <th style="text-align:right;">Tỉ lệ (%)</th>
                             <th style="text-align:right;">Chi phí</th>
                             <th style="text-align:right;">Hạn chót</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${ms.map(m => `
+                        ${ms.map(m => {
+                            const percent = m.percent || (bid.price > 0 ? ((m.amount || 0) / bid.price * 100) : 0);
+                            return `
                             <tr>
                                 <td>${(m.title || '').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</td>
+                                <td style="text-align:right; color:#6b7280; font-weight:500;">${parseFloat(percent).toFixed(1)}%</td>
                                 <td style="text-align:right; font-weight:600;">${formatNumberVND(m.amount || 0)}</td>
                                 <td style="text-align:right;">${m.deadline ? new Date(m.deadline).toLocaleDateString('vi-VN') : ''}</td>
                             </tr>
-                        `).join('')}
+                        `;
+                        }).join('')}
                     </tbody>
                     <tfoot class="border-top">
                         <tr>
                             <td style="font-weight:600;">TỔNG CỘNG</td>
+                            <td style="text-align:right; font-weight:600; color:#10b981;">100%</td>
                             <td style="text-align:right; font-weight:700;">${formatNumberVND(bid.price || 0)}</td>
                             <td></td>
                         </tr>

@@ -15,7 +15,7 @@ from crud import (
     approve_milestone, request_revision, close_project, delete_project, approve_project,
     get_project_activities, deliver_project, request_revision_project, accept_delivery,
 )
-from models import Bid, Project, ProjectStatus, ProjectType, BudgetType, MilestoneStatus, BidStatus
+from models import Bid, Project, ProjectStatus, ProjectType, BudgetType, MilestoneStatus, BidStatus, Milestone
 import httpx
 import os
 import pika
@@ -463,7 +463,15 @@ def create_bid_endpoint(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only freelancers can bid")
     
     freelancer_id = account.get("id")
-    bid_obj = create_bid(db, project_id, freelancer_id, **bid.dict())
+
+    # Convert milestones từ Pydantic models sang dicts để lưu vào JSON column
+    bid_data = bid.dict()
+    if 'milestones' in bid_data and bid_data['milestones']:
+        # Convert list of Pydantic models to list of dicts
+        bid_data['milestones'] = [m.dict() if hasattr(m, 'dict') else m for m in bid_data['milestones']]
+        print(f"[DEBUG] Creating bid with milestones: {bid_data['milestones']}")
+    
+    bid_obj = create_bid(db, project_id, freelancer_id, **bid_data)
     
     publish_event("bid.created", {
         "bid_id": bid_obj.id,
@@ -476,7 +484,84 @@ def create_bid_endpoint(
 
 @router.get("/{project_id}/bids", response_model=list[BidResponse])
 def get_project_bids(project_id: int, db: Session = Depends(get_db)):
-    return get_bids_by_project(db, project_id)
+    bids = get_bids_by_project(db, project_id)
+    
+    # Đảm bảo milestones được convert đúng format cho BidResponse
+    # Bid.milestones là JSON column (list of dicts), cần convert sang MilestoneSchema
+    result = []
+    for bid in bids:
+        bid_dict = {
+            "id": bid.id,
+            "project_id": bid.project_id,
+            "freelancer_id": bid.freelancer_id,
+            "price": bid.price,
+            "timeline_days": bid.timeline_days,
+            "cover_letter": bid.cover_letter,
+            "status": bid.status.value if hasattr(bid.status, 'value') else str(bid.status),
+            "created_at": bid.created_at,
+            "milestones": []
+        }
+        
+        # Convert milestones từ JSON column sang MilestoneSchema format
+        milestones_data = None
+        
+        # Ưu tiên lấy từ column milestones
+        if bid.milestones:
+            milestones_data = bid.milestones
+            # Nếu là string JSON, parse nó
+            if isinstance(bid.milestones, str):
+                try:
+                    import json
+                    milestones_data = json.loads(bid.milestones)
+                except Exception as e:
+                    print(f"[DEBUG] Failed to parse milestones JSON for bid {bid.id}: {e}")
+                    milestones_data = None
+        
+        # FALLBACK: Nếu milestones column rỗng, thử parse từ cover_letter (legacy format)
+        if not milestones_data and bid.cover_letter:
+            import json
+            # Dùng cách parse đơn giản: split('DATA_JSON:') và lấy phần sau
+            if 'DATA_JSON:' in bid.cover_letter:
+                try:
+                    parts = str(bid.cover_letter).split('DATA_JSON:')
+                    json_str = (parts[1] if len(parts) > 1 else '').strip()
+                    if json_str:
+                        milestones_data = json.loads(json_str)
+                        if isinstance(milestones_data, list) and len(milestones_data) > 0:
+                            print(f"[DEBUG] Found milestones in cover_letter for bid {bid.id}, parsed {len(milestones_data)} milestones")
+                        else:
+                            print(f"[DEBUG] Parsed milestones is not a list or empty for bid {bid.id}")
+                            milestones_data = None
+                    else:
+                        print(f"[DEBUG] No JSON string found after DATA_JSON: for bid {bid.id}")
+                except Exception as e:
+                    print(f"[DEBUG] Failed to parse milestones from cover_letter for bid {bid.id}: {e}")
+                    milestones_data = None
+            else:
+                print(f"[DEBUG] No DATA_JSON: pattern found in cover_letter for bid {bid.id}")
+        
+        # Convert từ dict sang MilestoneSchema format
+        if milestones_data and isinstance(milestones_data, list):
+            for m in milestones_data:
+                if isinstance(m, dict):
+                    # Tính percent nếu chưa có
+                    percent = m.get("percent")
+                    if percent is None and bid.price > 0:
+                        amount = float(m.get("amount", 0))
+                        percent = (amount / bid.price) * 100
+                    
+                    bid_dict["milestones"].append({
+                        "title": m.get("title", ""),
+                        "amount": float(m.get("amount", 0)),
+                        "deadline": m.get("deadline", ""),
+                        "percent": float(percent) if percent is not None else None
+                    })
+        
+        print(f"[DEBUG] Bid {bid.id} - milestones column: {bid.milestones}, parsed milestones: {len(bid_dict['milestones'])}")
+        
+        result.append(bid_dict)
+    
+    return result
 
 
 @router.post("/{project_id}/accept", response_model=ProjectResponse)
@@ -506,60 +591,43 @@ def accept_bid_endpoint(
     if str(role).lower() != "admin" and account.get("id") != project_obj.client_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owner can accept bids")
 
-    # 1. Cập nhật trạng thái Project & Bid trong DB (Logic cũ vẫn dùng tốt)
-    project = accept_bid(db, project_id, request.bid_id)
-    if not project:
+    # 1. Gọi hàm CRUD mới (trả về project và milestones)
+    result = accept_bid(db, project_id, request.bid_id)
+    if not result:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to accept bid")
     
-    # 2. Xử lý tạo Milestone từ dữ liệu ẩn trong Cover Letter
-    bid = db.query(Bid).filter(Bid.id == request.bid_id).first()
-    milestone_created = False
+    project, milestones = result  # Unpack kết quả
     
-    # Kiểm tra xem có chuỗi "DATA_JSON:" mà Frontend gửi lên không
-    if bid and bid.cover_letter and "DATA_JSON:" in bid.cover_letter:
+    # 2. Xử lý thanh toán ESCROW cho Mốc đầu tiên (Deposit)
+    if milestones and len(milestones) > 0:
+        first_milestone = milestones[0]
+        
         try:
-            # Cắt chuỗi để lấy phần JSON phía sau
-            parts = bid.cover_letter.split("DATA_JSON:")
-            if len(parts) > 1:
-                json_str = parts[1].strip()
-                milestones_data = json.loads(json_str)
+            # Gọi Payment Service để tạo deposit cho mốc 1
+            response = httpx.post(
+                f"{PAYMENTS_SERVICE_URL}/api/v1/payments/escrow/deposit",
+                json={
+                    "project_id": project_id,
+                    "amount": first_milestone.amount,  # CHỈ LẤY TIỀN MỐC 1
+                    "milestone_id": first_milestone.id,
+                    "client_id": project.client_id,
+                    "freelancer_id": project.freelancer_id
+                },
+                timeout=5.0
+            )
+            
+            # Nếu thành công, cập nhật trạng thái Mốc 1 thành IN_PROGRESS (Đã cọc)
+            if response.status_code == 200:
+                first_milestone.status = MilestoneStatus.IN_PROGRESS
+                escrow_data = response.json()
+                first_milestone.escrow_id = escrow_data.get('id') or escrow_data.get('escrow_id')
+                db.commit()
+                db.refresh(first_milestone)
                 
-                print(f"--> Found Milestone Data! Creating {len(milestones_data)} milestones...")
-                
-                for ms in milestones_data:
-                    # ms gồm: {title, amount, deadline}
-                    # Vì DB chưa có cột deadline riêng cho milestone, ta ghi tạm vào description
-                    desc = f"Thời hạn hoàn thành: {ms.get('deadline', 'N/A')}"
-                    
-                    # Tạo Milestone với trạng thái PENDING (Chờ Client nạp tiền)
-                    create_milestone(
-                        db, 
-                        project_id, 
-                        title=ms.get('title', 'Giai đoạn'), 
-                        amount=float(ms.get('amount', 0)),
-                        description=desc
-                    )
-                milestone_created = True
         except Exception as e:
-            print(f"Error parsing milestones from bid: {e}")
-            # Nếu lỗi parse JSON thì thôi, chạy xuống fallback bên dưới
-    
-    # 3. Fallback (Dự phòng): Nếu là Bid cũ hoặc không có JSON
-    # Thì tạo 1 Milestone duy nhất có giá trị = 100% giá thầu
-    if not milestone_created and bid:
-        create_milestone(
-            db, 
-            project_id, 
-            title="Toàn bộ dự án", 
-            description="Tạo tự động khi chấp nhận thầu (Không có kế hoạch chi tiết)", 
-            amount=bid.price
-        )
-    
-    # 4. Lưu thay đổi
-    db.commit()
-    
-    # --- QUAN TRỌNG: ĐÃ BỎ ĐOẠN GỌI PAYMENT SERVICE ---
-    # Trước đây: Gọi sang Payment trừ tiền luôn.
+            print(f"Lỗi gọi thanh toán: {e}")
+            # Không raise lỗi để tránh rollback việc accept project, 
+            # Client có thể thanh toán lại sau trong Workspace
     # Bây giờ: Không làm gì cả. Milestone đang ở trạng thái PENDING.
     # Client sẽ thấy nút "Nạp tiền (Deposit)" ở giao diện quản lý sau.
     
@@ -606,7 +674,196 @@ def create_milestone_endpoint(
 
 @router.get("/{project_id}/milestones", response_model=list[MilestoneResponse])
 def get_project_milestones(project_id: int, db: Session = Depends(get_db)):
-    return get_milestones(db, project_id)
+    milestones = get_milestones(db, project_id)
+    
+    # QUAN TRỌNG: Nếu project đã accept bid nhưng chưa có milestones, tự động tạo từ accepted bid
+    if not milestones or len(milestones) == 0:
+        project = get_project(db, project_id)
+        if project and project.accepted_bid_id:
+            print(f"[DEBUG] Project {project_id} has accepted_bid_id={project.accepted_bid_id} but no milestones. Creating from bid...")
+            bid = db.query(Bid).filter(Bid.id == project.accepted_bid_id).first()
+            if bid:
+                # Gọi lại logic tạo milestones từ accept_bid (nhưng không thay đổi trạng thái project)
+                official_milestones = []
+                
+                # Parse milestones từ bid.milestones (column JSON) hoặc cover_letter (legacy)
+                milestones_data = None
+                
+                # Ưu tiên lấy từ column milestones
+                if bid.milestones:
+                    milestones_data = bid.milestones
+                    if isinstance(bid.milestones, str):
+                        try:
+                            import json
+                            milestones_data = json.loads(bid.milestones)
+                        except Exception as e:
+                            print(f"[DEBUG] Failed to parse milestones JSON string: {e}")
+                            milestones_data = None
+                
+                # FALLBACK: Nếu milestones column rỗng, thử parse từ cover_letter (legacy format)
+                if not milestones_data and bid.cover_letter:
+                    import json
+                    # Dùng cách parse đơn giản: split('DATA_JSON:') và lấy phần sau
+                    if 'DATA_JSON:' in bid.cover_letter:
+                        try:
+                            parts = str(bid.cover_letter).split('DATA_JSON:')
+                            json_str = (parts[1] if len(parts) > 1 else '').strip()
+                            if json_str:
+                                milestones_data = json.loads(json_str)
+                                if isinstance(milestones_data, list) and len(milestones_data) > 0:
+                                    print(f"[DEBUG] Found milestones in cover_letter for bid {bid.id}, parsed {len(milestones_data)} milestones")
+                                else:
+                                    print(f"[DEBUG] Parsed milestones is not a list or empty for bid {bid.id}")
+                                    milestones_data = None
+                            else:
+                                print(f"[DEBUG] No JSON string found after DATA_JSON: for bid {bid.id}")
+                        except Exception as e:
+                            print(f"[DEBUG] Failed to parse milestones from cover_letter for bid {bid.id}: {e}")
+                            milestones_data = None
+                    else:
+                        print(f"[DEBUG] No DATA_JSON: pattern found in cover_letter for bid {bid.id}")
+                
+                # Tạo milestones từ bid
+                if milestones_data and isinstance(milestones_data, list) and len(milestones_data) > 0:
+                    print(f"[DEBUG] Creating {len(milestones_data)} milestones from accepted bid")
+                    for idx, m_data in enumerate(milestones_data):
+                        if isinstance(m_data, dict):
+                            title = m_data.get('title', f'Giai đoạn {idx+1}')
+                            amount = float(m_data.get('amount', 0))
+                            deadline = m_data.get('deadline', 'N/A')
+                        else:
+                            title = getattr(m_data, 'title', f'Giai đoạn {idx+1}')
+                            amount = float(getattr(m_data, 'amount', 0))
+                            deadline = getattr(m_data, 'deadline', 'N/A')
+                        
+                        new_ms = Milestone(
+                            project_id=project_id,
+                            title=title,
+                            amount=amount,
+                            description=f"Tạo tự động từ hồ sơ thầu. Hạn: {deadline}",
+                            status=MilestoneStatus.PENDING
+                        )
+                        db.add(new_ms)
+                        official_milestones.append(new_ms)
+                else:
+                    # Fallback: tạo 1 milestone với full price
+                    print(f"[DEBUG] No milestones in bid, creating fallback milestone")
+                    full_ms = Milestone(
+                        project_id=project_id,
+                        title="Hoàn thành dự án",
+                        amount=bid.price,
+                        description="Thanh toán toàn bộ khi hoàn thành",
+                        status=MilestoneStatus.PENDING
+                    )
+                    db.add(full_ms)
+                    official_milestones.append(full_ms)
+                
+                # Commit và refresh
+                db.commit()
+                for ms in official_milestones:
+                    db.refresh(ms)
+                
+                # Cập nhật milestone đầu tiên thành IN_PROGRESS nếu đã có escrow
+                if official_milestones and len(official_milestones) > 0:
+                    first_ms = official_milestones[0]
+                    # Kiểm tra xem có escrow deposit không
+                    try:
+                        import httpx
+                        escrow_response = httpx.get(
+                            f"{PAYMENTS_SERVICE_URL}/api/v1/payments/escrow?project_id={project_id}&milestone_id={first_ms.id}",
+                            timeout=3.0
+                        )
+                        if escrow_response.status_code == 200:
+                            escrow_data = escrow_response.json()
+                            if escrow_data and len(escrow_data) > 0:
+                                first_ms.status = MilestoneStatus.IN_PROGRESS
+                                first_ms.escrow_id = escrow_data[0].get('id')
+                                db.commit()
+                                db.refresh(first_ms)
+                    except Exception as e:
+                        print(f"[DEBUG] Could not check escrow status: {e}")
+                
+                # Lấy lại milestones sau khi tạo
+                milestones = get_milestones(db, project_id)
+                print(f"[DEBUG] Created {len(milestones)} milestones for project {project_id}")
+    
+    # Debug: Log số lượng milestones trả về
+    print(f"[DEBUG] get_project_milestones: Returning {len(milestones) if milestones else 0} milestones for project {project_id}")
+    if milestones:
+        for idx, ms in enumerate(milestones):
+            print(f"[DEBUG] Milestone {idx+1}: id={ms.id}, title={ms.title}, amount={ms.amount}, status={ms.status}")
+    
+    # QUAN TRỌNG: Kiểm tra và gửi cảnh báo quá hạn (KHÔNG tự động nộp)
+    if milestones:
+        from datetime import datetime
+        import re
+        
+        today = datetime.utcnow().date()
+        
+        for milestone in milestones:
+            # Chỉ xử lý milestones đang IN_PROGRESS hoặc PENDING và chưa được nộp
+            if milestone.status not in [MilestoneStatus.IN_PROGRESS, MilestoneStatus.PENDING]:
+                continue
+            
+            # Parse deadline từ description
+            deadline_match = re.search(r'Hạn:\s*(\d{4}-\d{2}-\d{2})', milestone.description or '')
+            if deadline_match:
+                try:
+                    deadline_str = deadline_match.group(1)
+                    deadline_date = datetime.strptime(deadline_str, '%Y-%m-%d').date()
+                    
+                    # Nếu đã đến hoặc qua deadline, gửi cảnh báo (KHÔNG tự động nộp)
+                    if deadline_date <= today:
+                        print(f"[DEBUG] Milestone {milestone.id} deadline reached ({deadline_date}), sending overdue notification...")
+                        
+                        # Gửi cảnh báo quá hạn cho cả 2 bên
+                        project = get_project(db, project_id)
+                        if project:
+                            # Cảnh báo cho Client
+                            publish_event("milestone.overdue", {
+                                "milestone_id": milestone.id,
+                                "project_id": project_id,
+                                "milestone_title": milestone.title,
+                                "project_title": project.title,
+                                "client_id": project.client_id,
+                                "freelancer_id": project.freelancer_id,
+                                "deadline": deadline_str,
+                                "message": f"Milestone '{milestone.title}' của dự án '{project.title}' đã quá hạn ({deadline_str}). Vui lòng liên hệ freelancer."
+                            })
+                            
+                            # Cảnh báo cho Freelancer
+                            publish_event("milestone.overdue", {
+                                "milestone_id": milestone.id,
+                                "project_id": project_id,
+                                "milestone_title": milestone.title,
+                                "project_title": project.title,
+                                "client_id": project.client_id,
+                                "freelancer_id": project.freelancer_id,
+                                "deadline": deadline_str,
+                                "message": f"Milestone '{milestone.title}' của dự án '{project.title}' đã quá hạn ({deadline_str}). Vui lòng nộp sản phẩm ngay."
+                            })
+                except Exception as e:
+                    print(f"[DEBUG] Failed to parse deadline for milestone {milestone.id}: {e}")
+    
+    # Convert milestones to response format
+    result = []
+    for ms in milestones:
+        result.append({
+            "id": ms.id,
+            "project_id": ms.project_id,
+            "title": ms.title,
+            "description": ms.description,
+            "amount": ms.amount,
+            "status": ms.status.value if hasattr(ms.status, 'value') else str(ms.status),
+            "escrow_id": ms.escrow_id,
+            "submitted_at": ms.submitted_at,
+            "approved_at": ms.approved_at,
+            "created_at": ms.created_at,
+            "updated_at": ms.updated_at
+        })
+    
+    print(f"[DEBUG] get_project_milestones: Returning {len(result)} milestones as JSON")
+    return result
 
 
 @router.post("/{project_id}/milestones/{milestone_id}/submit", status_code=status.HTTP_201_CREATED)
@@ -614,14 +871,38 @@ def submit_work(
     project_id: int,
     milestone_id: int,
     submission: MilestoneSubmissionCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account=Depends(resolve_account)
 ):
+    if not account:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    
     milestone = db.query(Milestone).filter(Milestone.id == milestone_id).first()
     if not milestone:
         raise HTTPException(status_code=404, detail="Milestone not found")
     
+    project = get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Kiểm tra quyền: chỉ freelancer được assign mới được nộp
+    freelancer_id = account.get("id")
+    if project.freelancer_id != freelancer_id:
+        raise HTTPException(status_code=403, detail="Only assigned freelancer can submit milestone")
+    
     submission_obj = submit_milestone(db, milestone_id, **submission.dict())
-    publish_event("milestone.submitted", {"milestone_id": milestone_id, "project_id": project_id})
+    
+    # Gửi thông báo cho client
+    publish_event("milestone.submitted", {
+        "milestone_id": milestone_id,
+        "project_id": project_id,
+        "milestone_title": milestone.title,
+        "project_title": project.title,
+        "client_id": project.client_id,
+        "freelancer_id": freelancer_id,
+        "message": f"Freelancer đã nộp sản phẩm cho milestone '{milestone.title}' của dự án '{project.title}'"
+    })
+    
     return submission_obj
 
 

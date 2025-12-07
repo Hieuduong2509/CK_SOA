@@ -8,53 +8,59 @@
   <link rel="stylesheet" href="css/style.css">
   <style>
     .apply-project-container {
-      max-width: 800px;
+      max-width: 1400px;
       margin: 0 auto;
-      padding: 2rem 1rem;
+      padding: 2.5rem 2rem;
     }
     .project-summary-card {
       background: #f9fafb;
       border: 1px solid #e9ecef;
-      border-radius: 8px;
-      padding: 1.25rem;
-      margin-bottom: 1.5rem;
+      border-radius: 10px;
+      padding: 1.75rem;
+      margin-bottom: 2rem;
     }
     .project-summary-card h3 {
-      margin: 0 0 0.5rem 0;
-      font-size: 1.25rem;
+      margin: 0 0 0.75rem 0;
+      font-size: 1.35rem;
       color: var(--text-primary);
     }
     .project-summary-card .project-meta {
       color: var(--text-secondary);
-      font-size: 0.95rem;
+      font-size: 1rem;
+      line-height: 1.5;
     }
     .milestone-table-container {
       background: #f8f9fa;
-      padding: 1rem;
-      border-radius: 8px;
-      margin-bottom: 1.5rem;
+      padding: 1.5rem;
+      border-radius: 10px;
+      margin-bottom: 2rem;
       border: 1px solid #e9ecef;
+    }
+    .milestone-table-container h5 {
+      margin: 0 0 1.25rem 0;
+      font-size: 1.1rem;
+      font-weight: 600;
     }
     .milestone-table {
       width: 100%;
       border-collapse: collapse;
       background: white;
-      border-radius: 4px;
+      border-radius: 6px;
       overflow: hidden;
     }
     .milestone-table thead {
       background: #f8f9fa;
     }
     .milestone-table th {
-      padding: 0.75rem;
+      padding: 1rem 0.875rem;
       text-align: left;
       font-weight: 600;
-      font-size: 0.9rem;
+      font-size: 0.95rem;
       color: var(--text-primary);
       border-bottom: 2px solid #e9ecef;
     }
     .milestone-table td {
-      padding: 0.75rem;
+      padding: 1rem 0.875rem;
       border-bottom: 1px solid #e9ecef;
     }
     .milestone-table tbody tr:last-child td {
@@ -62,43 +68,134 @@
     }
     .milestone-table input {
       width: 100%;
-      padding: 0.5rem;
+      padding: 0.75rem;
       border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 0.95rem;
+      border-radius: 6px;
+      font-size: 1rem;
+      transition: border-color 0.2s;
     }
     .milestone-table input:focus {
       outline: none;
       border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(82, 156, 255, 0.1);
     }
     .milestone-total {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-top: 1rem;
-      padding-top: 1rem;
+      margin-top: 1.5rem;
+      padding-top: 1.25rem;
       border-top: 2px solid #e9ecef;
     }
     .milestone-total-label {
       font-weight: 600;
-      font-size: 1.1rem;
+      font-size: 1.15rem;
       color: var(--text-primary);
     }
     .milestone-total-amount {
       font-weight: 700;
-      font-size: 1.2rem;
+      font-size: 1.3rem;
       color: var(--primary-color);
     }
     .form-actions {
       display: flex;
-      gap: 1rem;
+      gap: 1.25rem;
       justify-content: flex-end;
-      margin-top: 2rem;
+      margin-top: 2.5rem;
     }
     .btn-back {
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
+      margin-bottom: 2rem;
+    }
+    .input-group {
+      display: flex;
+      align-items: stretch;
+    }
+    .input-group .form-control {
+      border-top-right-radius: 0;
+      border-bottom-right-radius: 0;
+      padding: 0.75rem;
+      font-size: 1rem;
+    }
+    .input-group-text {
+      display: flex;
+      align-items: center;
+      padding: 0.75rem 0.875rem;
+      background-color: #e9ecef;
+      border: 1px solid #ddd;
+      border-left: none;
+      border-top-right-radius: 6px;
+      border-bottom-right-radius: 6px;
+      font-size: 1rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+    /* Tăng spacing cho form groups */
+    #proposalForm .form-group {
+      margin-bottom: 1.75rem;
+    }
+    #proposalForm .form-group label {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      display: block;
+    }
+    #proposalForm .form-group input[type="number"],
+    #proposalForm .form-group input[type="text"],
+    #proposalForm .form-group select,
+    #proposalForm .form-group textarea {
+      padding: 0.875rem;
+      font-size: 1rem;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      width: 100%;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    #proposalForm .form-group input:focus,
+    #proposalForm .form-group select:focus,
+    #proposalForm .form-group textarea:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(82, 156, 255, 0.1);
+    }
+    #proposalForm .form-group textarea {
+      min-height: 120px;
+      resize: vertical;
+    }
+    #proposalForm .form-group small.form-help {
+      display: block;
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+    /* Tăng padding cho form card */
+    #proposalForm.card {
+      padding: 2.5rem !important;
+    }
+    /* Text warning color */
+    .text-warning {
+      color: #ffc107 !important;
+    }
+    /* Cải thiện hiển thị milestone total */
+    .milestone-total {
+      flex-wrap: wrap;
+    }
+    @media (max-width: 768px) {
+      .apply-project-container {
+        max-width: 100%;
+        padding: 1.5rem 1rem;
+      }
+      #proposalForm.card {
+        padding: 1.5rem !important;
+      }
+      .milestone-table th,
+      .milestone-table td {
+        padding: 0.75rem 0.5rem;
+        font-size: 0.9rem;
+      }
     }
   </style>
 </head>
@@ -125,8 +222,9 @@
             </div>
 
             <div class="form-group">
-              <label for="totalBid">Tổng giá trị thầu (VND) *</label>
-              <input id="totalBid" type="number" min="0" step="1000" placeholder="Nhập tổng số tiền bạn muốn nhận" required>
+              <label for="totalBidInput" class="form-label fw-bold">Tổng ngân sách chào thầu (VNĐ) *</label>
+              <input id="totalBidInput" type="number" min="0" step="1000" class="form-control" placeholder="Ví dụ: 10000000" required onchange="recalcAllMilestones()">
+              <small class="form-help">Nhập tổng số tiền bạn muốn nhận cho dự án này.</small>
             </div>
 
             <div class="form-group">
@@ -157,24 +255,40 @@
               <table class="milestone-table">
                 <thead>
                   <tr>
-                    <th style="width: 40%">Công việc / Giai đoạn</th>
-                    <th style="width: 25%">Số tiền (VNĐ)</th>
-                    <th style="width: 25%">Ngày hoàn thành</th>
-                    <th style="width: 10%">Xóa</th>
+                    <th style="width: 28%">Công việc / Giai đoạn</th>
+                    <th style="width: 18%">Tỉ lệ (%)</th>
+                    <th style="width: 26%">Số tiền (VNĐ)</th>
+                    <th style="width: 20%">Ngày hoàn thành</th>
+                    <th style="width: 8%">Xóa</th>
                   </tr>
                 </thead>
                 <tbody id="milestoneBody">
                   <tr>
                     <td><input type="text" class="form-control m-title" placeholder="VD: Giai đoạn 1"></td>
+                    <td>
+                      <div class="input-group">
+                        <input type="number" class="form-control m-percent" placeholder="0" min="0" max="100" step="0.1">
+                        <span class="input-group-text">%</span>
+                      </div>
+                    </td>
                     <td><input type="number" class="form-control m-amount" placeholder="0" onchange="updateTotal()"></td>
                     <td><input type="date" class="form-control m-date"></td>
-                    <td><button type="button" class="btn btn-danger btn-sm" disabled style="width: 100%;">X</button></td>
+                    <td><button type="button" class="btn btn-danger btn-sm" disabled style="width: 100%;" onclick="removeRow(this)">X</button></td>
                   </tr>
                 </tbody>
               </table>
               <div class="milestone-total">
-                <span class="milestone-total-label">Tổng cộng:</span>
-                <span class="milestone-total-amount"><span id="totalBidDisplay">0</span> VND</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 1rem;">
+                  <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <span class="milestone-total-label">Đã chia: </span>
+                    <span id="totalPercentDisplay" class="fw-bold">0%</span>
+                    <span id="percentWarning" style="display: none; color: #dc3545; font-weight: 600; font-size: 0.95rem;"></span>
+                  </div>
+                  <div>
+                    <span class="milestone-total-label">Tổng: </span>
+                    <span class="milestone-total-amount"><span id="totalBidDisplay">0</span> VND</span>
+                  </div>
+                </div>
               </div>
             </div>
 

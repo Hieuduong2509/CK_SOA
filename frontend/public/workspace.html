@@ -98,6 +98,17 @@
 
                             <!-- Tab: Milestones -->
                             <div id="tab-milestones" class="tab-pane">
+                                <!-- DEBUG PANEL - Hiển thị raw data để kiểm tra -->
+                                <div id="milestonesDebugPanel" style="background: #FFF3CD; border: 2px solid #FFC107; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; font-family: monospace; font-size: 0.85rem; max-height: 300px; overflow-y: auto;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <strong style="color: #856404;">🔍 DEBUG PANEL - Raw API Data</strong>
+                                        <button onclick="document.getElementById('milestonesDebugPanel').style.display = 'none';" style="background: #FFC107; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer;">✕ Đóng</button>
+                                    </div>
+                                    <div id="milestonesDebugContent" style="color: #856404; white-space: pre-wrap; word-break: break-all;">
+                                        Đang tải dữ liệu...
+                                    </div>
+                                </div>
+                                
                                 <div id="milestonesList">
                                     <p style="text-align: center; color: var(--text-secondary); padding: 2rem;">Đang tải...</p>
                                 </div>
@@ -211,6 +222,44 @@
                         <i class="fas fa-redo"></i> Gửi yêu cầu
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submit Work Modal (for freelancer) -->
+    <div id="submitWorkModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2><i class="fas fa-paper-plane"></i> Nộp sản phẩm cho Giai đoạn này</h2>
+                <button class="modal-close" type="button" onclick="closeSubmitWorkModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="submit_milestone_id">
+                
+                <p class="text-muted" style="margin-bottom: 1.5rem;">
+                    Vui lòng tải lên các file thành phẩm và mô tả ngắn gọn về công việc đã hoàn thành.
+                </p>
+                
+                <div class="form-group">
+                    <label for="submit_description">Lời nhắn gửi Client:</label>
+                    <textarea id="submit_description" rows="3" placeholder="Ví dụ: Em đã hoàn thành bản thiết kế, anh xem qua file đính kèm nhé..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="submit_files">Đính kèm tệp sản phẩm:</label>
+                    <input type="file" class="form-control" id="submit_files" multiple accept="image/*,video/*,.pdf,.zip,.rar,.doc,.docx">
+                    <small class="form-hint">Hỗ trợ: Images, PDF, Zip, Docs... Có thể chọn nhiều file.</small>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; gap: 0.75rem; padding: 1.5rem; border-top: 1px solid var(--border-color);">
+                <button class="btn btn-secondary" style="flex: 1;" type="button" onclick="closeSubmitWorkModal()">
+                    Hủy
+                </button>
+                <button class="btn btn-primary" style="flex: 1;" type="button" onclick="confirmSubmitWork()">
+                    <i class="fas fa-paper-plane"></i> Gửi ngay
+                </button>
             </div>
         </div>
     </div>

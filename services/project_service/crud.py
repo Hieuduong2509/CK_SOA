@@ -209,6 +209,96 @@ def accept_bid(db: Session, project_id: int, bid_id: int):
     project.freelancer_id = bid.freelancer_id  # Set freelancer_id so workspace can find the freelancer
     project.status = ProjectStatus.IN_PROGRESS
 
+    # QUAN TRỌNG: Copy Milestones từ Bid sang bảng Milestones của Project
+    # Xóa các milestone cũ (nếu có - phòng trường hợp accept lại)
+    db.query(Milestone).filter(Milestone.project_id == project_id).delete()
+    
+    official_milestones = []
+    
+    # Debug: In ra để kiểm tra
+    print(f"[DEBUG] Accept bid {bid_id}: bid.milestones = {bid.milestones}, type = {type(bid.milestones)}")
+    
+    # Parse milestones từ bid.milestones (column JSON) hoặc cover_letter (legacy)
+    milestones_data = None
+    
+    # Ưu tiên lấy từ column milestones
+    if bid.milestones:
+        milestones_data = bid.milestones
+        if isinstance(bid.milestones, str):
+            try:
+                import json
+                milestones_data = json.loads(bid.milestones)
+                print(f"[DEBUG] Parsed milestones JSON string: {milestones_data}")
+            except Exception as e:
+                print(f"[DEBUG] Failed to parse milestones JSON string: {e}")
+                milestones_data = None
+    
+    # FALLBACK: Nếu milestones column rỗng, thử parse từ cover_letter (legacy format)
+    if not milestones_data and bid.cover_letter:
+        import json
+        # Dùng cách parse đơn giản: split('DATA_JSON:') và lấy phần sau
+        if 'DATA_JSON:' in bid.cover_letter:
+            try:
+                parts = str(bid.cover_letter).split('DATA_JSON:')
+                json_str = (parts[1] if len(parts) > 1 else '').strip()
+                if json_str:
+                    milestones_data = json.loads(json_str)
+                    if isinstance(milestones_data, list) and len(milestones_data) > 0:
+                        print(f"[DEBUG] Found milestones in cover_letter for bid {bid_id}, parsed {len(milestones_data)} milestones")
+                    else:
+                        print(f"[DEBUG] Parsed milestones is not a list or empty for bid {bid_id}")
+                        milestones_data = None
+                else:
+                    print(f"[DEBUG] No JSON string found after DATA_JSON: for bid {bid_id}")
+            except Exception as e:
+                print(f"[DEBUG] Failed to parse milestones from cover_letter for bid {bid_id}: {e}")
+                milestones_data = None
+        else:
+            print(f"[DEBUG] No DATA_JSON: pattern found in cover_letter for bid {bid_id}")
+    
+    # Nếu bid có milestones (JSON hoặc từ cover_letter), dùng nó
+    if milestones_data and isinstance(milestones_data, list) and len(milestones_data) > 0:
+        print(f"[DEBUG] Creating {len(milestones_data)} milestones from bid")
+        for idx, m_data in enumerate(milestones_data):
+            # m_data có thể là dict hoặc đã là object
+            if isinstance(m_data, dict):
+                title = m_data.get('title', f'Giai đoạn {idx+1}')
+                amount = float(m_data.get('amount', 0))
+                deadline = m_data.get('deadline', 'N/A')
+            else:
+                # Nếu là object (Pydantic model)
+                title = getattr(m_data, 'title', f'Giai đoạn {idx+1}')
+                amount = float(getattr(m_data, 'amount', 0))
+                deadline = getattr(m_data, 'deadline', 'N/A')
+            
+            print(f"[DEBUG] Creating milestone {idx+1}: title={title}, amount={amount}, deadline={deadline}")
+            
+            # Tạo Mốc mới
+            new_ms = Milestone(
+                project_id=project_id,
+                title=title,
+                amount=amount,
+                description=f"Tạo tự động từ hồ sơ thầu. Hạn: {deadline}",
+                status=MilestoneStatus.PENDING
+            )
+            db.add(new_ms)
+            official_milestones.append(new_ms)
+    
+    else:
+        # Fallback: Nếu dữ liệu cũ không có milestones JSON, tạo 1 mốc full tiền
+        print(f"[DEBUG] No milestones in bid, creating fallback milestone with amount={bid.price}")
+        full_ms = Milestone(
+            project_id=project_id,
+            title="Hoàn thành dự án",
+            amount=bid.price,
+            description="Thanh toán toàn bộ khi hoàn thành",
+            status=MilestoneStatus.PENDING
+        )
+        db.add(full_ms)
+        official_milestones.append(full_ms)
+    
+    print(f"[DEBUG] Total milestones created: {len(official_milestones)}")
+
     # Log activity
     log_activity(
         db,
@@ -219,7 +309,13 @@ def accept_bid(db: Session, project_id: int, bid_id: int):
 
     db.commit()
     db.refresh(project)
-    return project
+    
+    # Refresh milestones để có ID
+    for ms in official_milestones:
+        db.refresh(ms)
+    
+    # Trả về kèm danh sách mốc vừa tạo để Route xử lý thanh toán
+    return project, official_milestones
 
 
 def create_milestone(db: Session, project_id: int, **kwargs):

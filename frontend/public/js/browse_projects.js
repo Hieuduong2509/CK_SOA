@@ -292,12 +292,15 @@
 
         let html = '<div style="display:flex; font-weight:600; margin-bottom:10px; font-size:0.9em; color:#666;">' +
                    '<div style="flex:2">Giai đoạn</div>' +
+                   '<div style="flex:1">Tỉ lệ (%)</div>' +
                    '<div style="flex:1">Số tiền (VND)</div>' +
                    '<div style="flex:1">Ngày xong</div>' +
                    '</div>';
 
         const avgAmount = Math.floor(totalAmount / count);
         const remainder = totalAmount - (avgAmount * count); 
+
+        let totalPercentCalculated = 0; // Để đảm bảo tổng = 100%
 
         for (let i = 1; i <= count; i++) {
             const date = new Date(); 
@@ -315,14 +318,28 @@
             let dateStr = targetDate.toISOString().split('T')[0];
             const maxDateStr = projectDeadline ? projectDeadline.toISOString().split('T')[0] : '';
             
+            // Milestone cuối nhận phần dư để đảm bảo tổng tiền = totalAmount
             let amountVal = (i === count) ? (avgAmount + remainder) : avgAmount;
             let titleVal = `Giai đoạn ${i}`;
+            
+            // Tính percent từ amount thực tế
+            let percentVal;
+            if (i === count) {
+                // Milestone cuối: đảm bảo tổng = 100%
+                percentVal = (100 - totalPercentCalculated).toFixed(1);
+            } else {
+                percentVal = totalAmount > 0 ? ((amountVal / totalAmount) * 100).toFixed(1) : (100 / count).toFixed(1);
+                totalPercentCalculated += parseFloat(percentVal);
+            }
 
             if (existingData && existingData[i-1]) {
                 const old = existingData[i-1];
                 titleVal = old.title;
                 amountVal = old.amount;
                 dateStr = old.deadline;
+                // Ưu tiên dùng percent từ database, nếu không có thì tính từ amount/totalAmount
+                percentVal = old.percent || (totalAmount > 0 ? ((old.amount || 0) / totalAmount * 100) : 0);
+                percentVal = parseFloat(percentVal).toFixed(1);
             }
 
             // QUAN TRỌNG: Thêm thuộc tính max="..." để khóa lịch
@@ -330,6 +347,12 @@
             <div class="milestone-row" style="display:flex; gap:10px; margin-bottom:10px;">
                 <div style="flex:2">
                     <input type="text" class="ms-title" value="${titleVal}" placeholder="Tên công việc" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+                </div>
+                <div style="flex:1">
+                    <div style="display:flex; align-items:center;">
+                        <input type="number" class="ms-percent" value="${percentVal}" min="0" max="100" step="0.1" placeholder="0" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px 0 0 4px; border-right:none;">
+                        <span style="padding:8px 10px; background:#f8f9fa; border:1px solid #ddd; border-left:none; border-radius:0 4px 4px 0; font-size:0.9em; color:#666;">%</span>
+                    </div>
                 </div>
                 <div style="flex:1">
                     <input type="number" class="ms-amount" value="${amountVal}" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
@@ -344,6 +367,155 @@
         }
         
         container.innerHTML = html;
+        
+        // Thêm phần tổng kết và cảnh báo
+        const summaryHtml = `
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #e9ecef; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <span style="font-weight: 600; color: #666;">Đã chia: </span>
+                    <span id="bidTotalPercentDisplay" style="font-weight: 700;">0%</span>
+                    <span id="bidPercentWarning" style="display: none; color: #dc3545; font-weight: 600; font-size: 0.95rem;"></span>
+                </div>
+                <div>
+                    <span style="font-weight: 600; color: #666;">Tổng: </span>
+                    <span id="bidTotalAmountDisplay" style="font-weight: 700; color: #0066ff;">0</span> VND
+                </div>
+            </div>
+        `;
+        container.innerHTML += summaryHtml;
+        
+        // Gán event listeners cho tính toán 2 chiều
+        attachMilestoneCalculators();
+        
+        // Cập nhật tổng kết ban đầu
+        updateBidSummary();
+    }
+    
+    // Hàm gán event listeners cho tính toán % và tiền
+    function attachMilestoneCalculators() {
+        const container = document.getElementById('milestoneContainer');
+        if (!container) return;
+        
+        const rows = container.querySelectorAll('.milestone-row');
+        const totalBidInput = document.getElementById('bidPrice');
+        
+        rows.forEach(function(row, index) {
+            const percentInput = row.querySelector('.ms-percent');
+            const amountInput = row.querySelector('.ms-amount');
+            
+            if (!percentInput || !amountInput) return;
+            
+            // Khi nhập % -> tính tiền
+            percentInput.addEventListener('input', function() {
+                const totalBid = parseFloat(totalBidInput.value) || 0;
+                const p = parseFloat(this.value) || 0;
+                
+                // Validation: Mốc đầu tiên không quá 50%
+                if (index === 0 && p > 50) {
+                    alert("Theo quy định an toàn, giai đoạn đặt cọc (Mốc 1) tối đa là 50%.");
+                    this.value = 50;
+                    amountInput.value = Math.round((totalBid * 50) / 100);
+                } else {
+                    amountInput.value = Math.round((totalBid * p) / 100);
+                }
+                updateBidSummary();
+            });
+            
+            // Khi nhập tiền -> tính %
+            amountInput.addEventListener('input', function() {
+                const totalBid = parseFloat(totalBidInput.value) || 0;
+                const a = parseFloat(this.value) || 0;
+                
+                if (totalBid > 0) {
+                    let p = (a / totalBid) * 100;
+                    
+                    // Validation: Mốc đầu tiên không quá 50%
+                    if (index === 0 && p > 50) {
+                        alert("Tiền cọc quá lớn! Giai đoạn 1 tối đa 50% tổng giá trị.");
+                        this.value = Math.round((totalBid * 50) / 100);
+                        percentInput.value = 50;
+                    } else {
+                        percentInput.value = p.toFixed(1);
+                    }
+                }
+                updateBidSummary();
+            });
+        });
+        
+        // Khi thay đổi tổng giá trị thầu -> tính lại tất cả tiền dựa trên %
+        if (totalBidInput) {
+            totalBidInput.addEventListener('input', function() {
+                const totalBid = parseFloat(this.value) || 0;
+                const rows = container.querySelectorAll('.milestone-row');
+                
+                rows.forEach(function(row) {
+                    const percentInput = row.querySelector('.ms-percent');
+                    const amountInput = row.querySelector('.ms-amount');
+                    if (percentInput && amountInput) {
+                        const p = parseFloat(percentInput.value) || 0;
+                        amountInput.value = Math.round((totalBid * p) / 100);
+                    }
+                });
+                updateBidSummary();
+            });
+        }
+    }
+    
+    // Hàm cập nhật tổng kết
+    function updateBidSummary() {
+        const container = document.getElementById('milestoneContainer');
+        if (!container) return;
+        
+        const rows = container.querySelectorAll('.milestone-row');
+        let totalPercent = 0;
+        let totalAmount = 0;
+        
+        rows.forEach(function(row) {
+            const percentInput = row.querySelector('.ms-percent');
+            const amountInput = row.querySelector('.ms-amount');
+            if (percentInput) totalPercent += parseFloat(percentInput.value) || 0;
+            if (amountInput) totalAmount += parseFloat(amountInput.value) || 0;
+        });
+        
+        const totalPercentEl = document.getElementById('bidTotalPercentDisplay');
+        const totalAmountEl = document.getElementById('bidTotalAmountDisplay');
+        const percentWarning = document.getElementById('bidPercentWarning');
+        
+        if (totalPercentEl) {
+            totalPercentEl.textContent = totalPercent.toFixed(1) + "%";
+            
+            // Xử lý hiển thị cảnh báo
+            if (Math.abs(totalPercent - 100) < 0.1) {
+                // Đúng 100%
+                totalPercentEl.style.color = "#10b981";
+                if (percentWarning) {
+                    percentWarning.style.display = 'none';
+                    percentWarning.textContent = '';
+                }
+            } else if (totalPercent > 100) {
+                // Vượt quá 100%
+                totalPercentEl.style.color = "#dc3545";
+                if (percentWarning) {
+                    const excess = (totalPercent - 100).toFixed(1);
+                    percentWarning.style.display = 'inline';
+                    percentWarning.textContent = '(Vượt quá ' + excess + '%)';
+                    percentWarning.style.color = '#dc3545';
+                }
+            } else {
+                // Chưa đủ 100%
+                totalPercentEl.style.color = "#ffc107";
+                if (percentWarning) {
+                    const missing = (100 - totalPercent).toFixed(1);
+                    percentWarning.style.display = 'inline';
+                    percentWarning.textContent = '(Thiếu ' + missing + '%)';
+                    percentWarning.style.color = '#ffc107';
+                }
+            }
+        }
+        
+        if (totalAmountEl) {
+            totalAmountEl.textContent = totalAmount.toLocaleString('vi-VN');
+        }
     }
 
     // --- 2. HÀM XỬ LÝ GỬI (STRICT CHECK) ---
@@ -366,12 +538,14 @@
         }
 
         const msTitles = document.querySelectorAll('.ms-title');
+        const msPercents = document.querySelectorAll('.ms-percent');
         const msAmounts = document.querySelectorAll('.ms-amount');
         const msDeadlines = document.querySelectorAll('.ms-deadline');
         
         const milestones = [];
         let maxDays = 0;
         let totalCheck = 0;
+        let totalPercentCheck = 0;
         
         // Parse deadline dự án để kiểm tra chặt chẽ
         let projectDeadline = null;
@@ -383,7 +557,9 @@
 
         for(let i=0; i<msTitles.length; i++) {
             const amt = parseFloat(msAmounts[i].value) || 0;
+            const pct = parseFloat(msPercents[i] ? msPercents[i].value : 0) || 0;
             totalCheck += amt;
+            totalPercentCheck += pct;
             const dLineStr = msDeadlines[i].value;
             const itemDate = new Date(dLineStr);
             
@@ -399,7 +575,21 @@
             const diff = Math.ceil((itemDate - new Date()) / (86400000));
             if (diff > maxDays) maxDays = diff;
 
-            milestones.push({ title: msTitles[i].value, amount: amt, deadline: dLineStr });
+            milestones.push({ 
+                title: msTitles[i].value, 
+                amount: amt, 
+                percent: pct,
+                deadline: dLineStr 
+            });
+        }
+        
+        // Kiểm tra tổng phần trăm
+        if (Math.abs(totalPercentCheck - 100) > 0.5) {
+            if(errorDiv) {
+                errorDiv.textContent = `Tổng tỉ lệ chia mốc phải là 100%. Hiện tại là ${totalPercentCheck.toFixed(1)}%.`;
+                errorDiv.style.display = 'block';
+            }
+            return;
         }
 
         if (Math.abs(totalCheck - price) > 1000) {
